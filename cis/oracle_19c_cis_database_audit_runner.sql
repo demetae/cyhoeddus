@@ -1,0 +1,4168 @@
+-- CIS Oracle Database 19c Benchmark v2.0.0
+-- Database-only SQL audit runner generated from uploaded benchmark audit sections.
+-- Excludes host/OS checks such as opatch, listener.ora, and sqlnet.ora.
+--
+-- Run from SQL*Plus:
+--   sqlplus / as sysdba
+--   SQL> @oracle_19c_cis_database_audit_runner.sql
+--
+-- Output:
+--   oracle_19c_cis_db_audit_results.html
+--
+-- Notes:
+--   * Automated controls: PASS when the CIS query returns zero rows, FAIL when it returns one or more rows.
+--   * Manual controls: REVIEW; rows are evidence to review, not automatic failure.
+--   * The script creates and drops a GLOBAL TEMPORARY TABLE and a PROCEDURE in the current schema.
+
+SET ECHO OFF
+SET VERIFY OFF
+SET FEEDBACK ON
+SET HEADING ON
+SET PAGESIZE 50000
+SET LINESIZE 300
+SET LONG 1000000
+SET LONGCHUNKSIZE 1000000
+SET TRIMSPOOL ON
+SET TAB OFF
+SET SERVEROUTPUT ON SIZE UNLIMITED
+WHENEVER SQLERROR CONTINUE
+
+DEFINE OUTPUT_FILE = oracle_19c_cis_db_audit_results.html
+
+SPOOL &OUTPUT_FILE
+SET MARKUP HTML ON ENTMAP ON SPOOL ON PREFORMAT OFF
+
+PROMPT <h1>CIS Oracle Database 19c - Database Audit Results</h1>
+PROMPT <p>Database-only checks. Host/OS checks are not included.</p>
+
+PROMPT <h2>Audit Context</h2>
+SELECT
+  TO_CHAR(SYSDATE, 'YYYY-MM-DD HH24:MI:SS') AS audit_datetime,
+  i.host_name,
+  i.instance_name,
+  d.name AS database_name,
+  i.version AS oracle_version
+FROM v$instance i
+CROSS JOIN v$database d;
+
+BEGIN
+  EXECUTE IMMEDIATE 'DROP TABLE cis_audit_results PURGE';
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLCODE != -942 THEN
+      RAISE;
+    END IF;
+END;
+/
+
+CREATE GLOBAL TEMPORARY TABLE cis_audit_results (
+  control_id     VARCHAR2(30),
+  control_title  VARCHAR2(500),
+  assessment     VARCHAR2(30),
+  result         VARCHAR2(30),
+  finding_count  NUMBER,
+  error_message  VARCHAR2(4000),
+  executed_at    DATE
+) ON COMMIT PRESERVE ROWS;
+/
+
+CREATE OR REPLACE PROCEDURE cis_run_check (
+  p_control_id    IN VARCHAR2,
+  p_control_title IN VARCHAR2,
+  p_assessment    IN VARCHAR2,
+  p_sql           IN CLOB
+) IS
+  v_count NUMBER;
+  v_result VARCHAR2(30);
+BEGIN
+  EXECUTE IMMEDIATE 'SELECT COUNT(*) FROM (' || p_sql || ')' INTO v_count;
+
+  IF UPPER(p_assessment) = 'MANUAL' THEN
+    v_result := 'REVIEW';
+  ELSE
+    IF v_count = 0 THEN
+      v_result := 'PASS';
+    ELSE
+      v_result := 'FAIL';
+    END IF;
+  END IF;
+
+  INSERT INTO cis_audit_results (
+    control_id, control_title, assessment, result, finding_count, error_message, executed_at
+  ) VALUES (
+    p_control_id, p_control_title, p_assessment, v_result, v_count, NULL, SYSDATE
+  );
+
+EXCEPTION
+  WHEN OTHERS THEN
+    INSERT INTO cis_audit_results (
+      control_id, control_title, assessment, result, finding_count, error_message, executed_at
+    ) VALUES (
+      p_control_id, p_control_title, p_assessment, 'ERROR', NULL, SUBSTR(SQLERRM, 1, 4000), SYSDATE
+    );
+END;
+/
+
+
+PROMPT <h2>Running Summary Checks</h2>
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.1~',
+    p_control_title => q'~Ensure 'BACKGROUND_CORE_DUMP' Is Not Set To 'Full' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'BACKGROUND_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.2~',
+    p_control_title => q'~Ensure 'SHADOW_CORE_DUMP' Is Not Set To 'Full' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SHADOW_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.3~',
+    p_control_title => q'~Ensure 'ALLOW_GROUP_ACCESS_TO_SGA' Is Set To 'FALSE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'ALLOW_GROUP_ACCESS_TO_SGA'
+AND UPPER(VALUE) != 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.4~',
+    p_control_title => q'~Review Undocumented (Underscore) Parameters Not Set To 'DEFAULT' Values (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+       UPPER(NAME), UPPER(V.VALUE), V.UPDATE_COMMENT
+FROM GV$SYSTEM_PARAMETER V
+WHERE SUBSTR(NAME,1,1) = '_'
+AND ISDEFAULT = 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.5~',
+    p_control_title => q'~Ensure 'OS_ROLES' Is Set To 'FALSE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.6~',
+    p_control_title => q'~Ensure 'REMOTE_OS_ROLES' Is Set To 'FALSE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.7~',
+    p_control_title => q'~Ensure 'SEC_MAX_FAILED_LOGIN_ATTEMPTS' Is Set To '3' Or Less (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME),UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME)='SEC_MAX_FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(VALUE,'1',1,'2',2,'3',3,9999)) > 3~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.8~',
+    p_control_title => q'~Ensure 'SEC_PROTOCOL_ERROR_FURTHER_ACTION' Is Set To '(DROP,3)' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_FURTHER_ACTION'
+AND UPPER(VALUE) NOT IN ('(DROP,3)','(DROP, 3)','DROP,3','DROP, 3' )~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.9~',
+    p_control_title => q'~Ensure 'SEC_PROTOCOL_ERROR_TRACE_ACTION' Is Set To 'LOG' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_TRACE_ACTION'
+AND UPPER(VALUE) != 'LOG'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.10~',
+    p_control_title => q'~Ensure 'SEC_RETURN_SERVER_RELEASE_BANNER' Is Set To 'FALSE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_RETURN_SERVER_RELEASE_BANNER'
+AND UPPER(VALUE) != 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.11~',
+    p_control_title => q'~Ensure 'REMOTE_LOGIN_PASSWORDFILE' Is Set To 'NONE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE (V.CON_ID,
+               0, 'ENTIRE-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               1, 'ROOTONLY-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               CON_ID_TO_CON_NAME (V.CON_ID))    AS CONTAINERNAME,
+       UPPER (V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER (NAME) = 'REMOTE_LOGIN_PASSWORDFILE'
+AND  (
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') = 0 AND UPPER (VALUE) != 'NONE')
+      OR
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') > 0 AND UPPER (VALUE) != 'EXCLUSIVE')
+     )~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.12~',
+    p_control_title => q'~Ensure 'REMOTE_LISTENER' Is Empty (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_LISTENER'
+AND VALUE IS NOT NULL~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.13~',
+    p_control_title => q'~Ensure 'RESOURCE_LIMIT' Is Set To 'TRUE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'RESOURCE_LIMIT'
+AND UPPER(VALUE) != 'TRUE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.14~',
+    p_control_title => q'~Ensure 'REMOTE_OS_AUTHENT' Is Set to 'FALSE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_AUTHENT'
+AND UPPER(VALUE) != 'FALSE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~2.3.15~',
+    p_control_title => q'~Ensure 'SEC_CASE_SENSITIVE_LOGON' Is Set to 'TRUE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_CASE_SENSITIVE_LOGON'
+AND UPPER(VALUE) != 'TRUE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.1~',
+    p_control_title => q'~Ensure 'FAILED_LOGIN_ATTEMPTS' Is Less Than Or Equal To '5' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(P.LIMIT, 'DEFAULT',
+                              (SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='FAILED_LOGIN_ATTEMPTS'
+                               AND CON_ID = P.CON_ID),
+                        'UNLIMITED','9999',P.LIMIT)) > 5~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.2~',
+    p_control_title => q'~Ensure 'PASSWORD_LOCK_TIME' Is Greater Than Or Equal To '1' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_LOCK_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED','9999',P.LIMIT)) < 1
+AND P.RESOURCE_NAME = 'PASSWORD_LOCK_TIME'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.3~',
+    p_control_title => q'~Ensure 'PASSWORD_LIFE_TIME + PASSWORD_GRACE_TIME' Is Less Than Or Equal To '365' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH PWD_LIFE_TIME
+AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_LIFE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_LIFE_TIME'),
+PWD_GRACE_TIME AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_GRACE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_GRACE_TIME')
+SELECT L.CONTAINERNAME, L.PROFILE, L.RESOURCE_NAME, L.LIMIT, G.RESOURCE_NAME,
+G.LIMIT
+FROM PWD_LIFE_TIME L, PWD_GRACE_TIME G
+WHERE L.CON_ID = G.CON_ID
+AND L.PROFILE = G.PROFILE
+AND L.LIMIT + G.LIMIT > 365~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.4~',
+    p_control_title => q'~Ensure 'PASSWORD_REUSE_MAX' Is Set To 'UNLIMITED' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_REUSE_MAX'
+      AND CON_ID = P.CON_ID),
+                       'UNLIMITED','9999',P.LIMIT)) < 9999
+AND P.RESOURCE_NAME = 'PASSWORD_REUSE_MAX'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.5~',
+    p_control_title => q'~Ensure 'PASSWORD_VERIFY_FUNCTION' Is Set For All Profiles (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND P.LIMIT = 'NULL'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.6~',
+    p_control_title => q'~Ensure 'PASSWORD_VERIFY_FUNCTION' Is Configured Correctly (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT DECODE(CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(CON_ID)) AS CONTAINERNAME,
+LINE, TEXT
+FROM CDB_SOURCE
+WHERE (CON_ID,NAME) IN ( SELECT DISTINCT CON_ID, LIMIT
+FROM SYS.CDB_PROFILES
+WHERE RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND (LIMIT IS NOT NULL OR LIMIT != 'DEFAULT'))~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.7~',
+    p_control_title => q'~Ensure 'PASSWORD_ROLLOVER_TIME' Is Set To '0' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  TO_NUMBER(DECODE(P.LIMIT,'DEFAULT',(SELECT LIMIT
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'
+                                 AND CON_ID = P.CON_ID),
+                              P.LIMIT)) > 0
+AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~3.8~',
+    p_control_title => q'~Ensure 'INACTIVE_ACCOUNT_TIME' Is Less Than Or Equal To '120' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+AND TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED',9999,
+                       P.LIMIT)) > 120~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.1~',
+    p_control_title => q'~Ensure All Default Passwords Are Changed (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(C.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+A.USERNAME, C.ACCOUNT_STATUS
+FROM CDB_USERS_WITH_DEFPWD A, CDB_USERS C
+WHERE A.USERNAME = C.USERNAME~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.2~',
+    p_control_title => q'~Ensure No Custom 'ORACLE_MAINTAINED' Users Exist (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME, USERNAME
+FROM CDB_USERS C
+WHERE ORACLE_MAINTAINED = 'Y'
+AND USERNAME NOT IN (
+    'ANONYMOUS','APPQOSSYS','AUDSYS','CTXSYS','DBSFWUSER',
+    'DBSNMP','DIP','DVF','DVSYS','GGSYS','GSMADMIN_INTERNAL',
+    'GSMCATUSER','GSMROOTUSER','GSMUSER','LBACSYS','MDDATA',
+    'MDSYS','OJVMSYS','OLAPSYS','ORACLE_OCM','ORDDATA',
+    'ORDPLUGINS','ORDSYS','OUTLN','REMOTE_SCHEDULER_AGENT',
+    'SI_INFORMTN_SCHEMA','SYS','SYS$UMF','SYSBACKUP','SYSDG',
+    'SYSKM','SYSRAC','SYSTEM','WMSYS','XDB','XS$NULL'
+    )~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.3~',
+    p_control_title => q'~Review The Users Created Through Real Application Security (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT DECODE(C.CON_ID,0,'ENTIRE-'|| SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+C.NAME, C.DIRECT_LOGON_USER, C.STATUS, ACCOUNT_STATUS
+FROM CDB_XS_USERS C
+WHERE C.NAME NOT IN ('XSGUEST')~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.4~',
+    p_control_title => q'~Ensure Old Password Versions Are Not Used (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(C.CON_ID,
+            0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+    C.USERNAME,
+    C.PASSWORD_VERSIONS
+FROM CDB_USERS C
+WHERE NOT REGEXP_LIKE(C.PASSWORD_VERSIONS, '^\s*12C\s*$')
+and username not in ('SYS')~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.5~',
+    p_control_title => q'~Ensure The Latest Version of The Password File Is Used (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT inst_id,format
+FROM GV$PASSWORDFILE_INFO
+WHERE FORMAT !='12.2'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.6~',
+    p_control_title => q'~Ensure That Users In Different RAC Instances Are Identical In PW Files (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~select username
+from GV$PWFILE_USERS
+group by username
+having count(distinct inst_id) < (select count(distinct inst_id) from
+GV$PWFILE_USERS)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.7~',
+    p_control_title => q'~Ensure No Public Database Links Exist (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(V.CON_ID, 0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+DB_LINK, HOST
+FROM CDB_DB_LINKS V
+WHERE OWNER = 'PUBLIC'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~4.8~',
+    p_control_title => q'~Ensure That Database Link Passwords Are Using The Latest Encryption (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT DECODE(v.con_id, 0, 'Entire-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       1, 'RootOnly-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       CON_ID_TO_CON_NAME(v.con_id)) AS container_name,
+name AS db_link,
+host,
+userid
+FROM CONTAINERS("SYS"."LINK$") v
+WHERE substr(passwordx,1,2)!='06'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~5.1.1~',
+    p_control_title => q'~Ensure All Auditable System Actions Commands Are Audited (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH PRIVS(PRIVILEGE) AS (
+SELECT DISTINCT A.PRIVILEGE AS NAME FROM DBA_SYS_PRIVS A
+    WHERE A.PRIVILEGE NOT IN (SELECT NAME FROM AUDITABLE_SYSTEM_ACTIONS WHERE
+COMPONENT='Standard')
+    AND PRIVILEGE NOT IN ('INHERIT ANY PRIVILEGES')
+    UNION
+    SELECT A.NAME FROM AUDITABLE_SYSTEM_ACTIONS A
+    WHERE COMPONENT='Standard'
+    AND A.NAME NOT IN
+('ALL','SELECT','DELETE','INSERT','UPDATE','EXECUTE','LOGON','LOGOFF')
+),
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.PRIVILEGE FROM V$CONTAINERS C, PRIVS LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN (SELECT PRIVILEGE FROM PRIVS )
+       AND AUD.AUDIT_OPTION_TYPE IN ('SYSTEM PRIVILEGE','STANDARD ACTION')
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~5.1.2~',
+    p_control_title => q'~Ensure the 'LOGON' AND 'LOGOFF' Actions Audit Is Enabled (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.COLUMN_VALUE AS AUDIT_OPTION FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('LOGON','LOGOFF')) LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('LOGON','LOGOFF')
+       AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~5.1.3~',
+    p_control_title => q'~Ensure Critical Packages Are Audited (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OBJECT_NAME) AS(
+SELECT C.NAME, C.CON_ID, LL.* FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('DBMS_AW','DBMS_CRYPTO','DBMS_FGA',
+'DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR',
+'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+'DBMS_OBFUSCATION_TOOLKIT')
+) LL WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION,
+AUD.OBJECT_NAME, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.OBJECT_NAME IN
+('DBMS_AW','DBMS_CRYPTO','DBMS_FGA','DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR'
+,
+  'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+  'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+  'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+  'DBMS_OBFUSCATION_TOOLKIT')
+    AND AUD.AUDIT_OPTION_TYPE = 'OBJECT ACTION'
+    AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS CONTAINERNAME,
+ENABLED.*
+      FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+      WHERE ENABLED.SUCCESS = 'YES'
+        AND ENABLED.FAILURE = 'YES'
+        AND ENABLED.ENABLED_OPTION = 'BY USER'
+        AND ENABLED.ENTITY_NAME = 'ALL USERS'
+        AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+        AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OBJECT_NAME
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.OBJECT_NAME = C.AUDIT_OBJECT_NAME AND
+E.CON_ID = C.CON_ID
+)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~5.1.4~',
+    p_control_title => q'~Ensure All Export Activities Are Audited (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, 'EXPORT' AS AUDIT_OPTION FROM V$CONTAINERS C WHERE
+C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('EXPORT')
+       AND AUD.AUDIT_OPTION_TYPE = 'DATAPUMP ACTION'
+       AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS
+CONTAINERNAME, ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~5.1.5~',
+    p_control_title => q'~Ensure The Use Of SYS* Privileges Is Audited (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION, ENTITY_NAME_EXPECTED) AS (
+  SELECT C.NAME, C.CON_ID, 'ALL' AS AUDIT_OPTION, LL.COLUMN_VALUE AS
+ENTITY_NAME_EXPECTED FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLI
+C')) LL
+  WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS (
+  SELECT DISTINCT AUD.CON_ID, AUD.AUDIT_OPTION, ENABLED.ENTITY_NAME
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD,
+CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+  WHERE ENABLED.CON_ID = AUD.CON_ID
+    AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+    AND AUD.AUDIT_OPTION IN ('ALL')
+    AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+    AND ENABLED.SUCCESS = 'YES'
+    AND ENABLED.FAILURE = 'YES'
+    AND ENABLED.ENABLED_OPTION = 'BY USER'
+    AND ENABLED.ENTITY_NAME IN
+('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLIC')
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION, C.ENTITY_NAME_EXPECTED
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.ENTITY_NAME = C.ENTITY_NAME_EXPECTED AND E.CON_ID = C.CON_ID
+) ORDER BY 1, 3~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.1~',
+    p_control_title => q'~Ensure '%ANY%' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE LIKE '%ANY%'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE LIKE '%ANY%' AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.2~',
+    p_control_title => q'~Ensure Admin Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE ADMIN_OPTION = 'YES'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.ADMIN_OPTION = 'Y' AND P.GRANTEE
+= R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.3~',
+    p_control_title => q'~Ensure 'IMPORT' And 'EXPORT' 'FULL DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('IMPORT FULL DATABASE','EXPORT FULL DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('IMPORT FULL
+DATABASE','EXPORT FULL DATABASE') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR
+GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.4~',
+    p_control_title => q'~Ensure 'CREATE EXTERNAL JOB' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE EXTERNAL JOB')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE EXTERNAL
+JOB') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.5~',
+    p_control_title => q'~Ensure 'BECOME USER' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('BECOME USER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('BECOME USER') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.6~',
+    p_control_title => q'~Ensure 'TEXT DATASTORE ACCESS' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('TEXT DATASTORE ACCESS')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('TEXT DATASTORE
+ACCESS') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.7~',
+    p_control_title => q'~Ensure 'CREATE', 'ALTER', And 'DROP' 'PUBLIC DATABASE LINK' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE PUBLIC DATABASE LINK','ALTER PUBLIC DATABASE
+LINK','DROP PUBLIC DATABASE LINK')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE PUBLIC
+DATABASE LINK','ALTER PUBLIC DATABASE LINK','DROP PUBLIC DATABASE LINK') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.8~',
+    p_control_title => q'~Ensure 'LOGMINING' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('LOGMINING')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('LOGMINING') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.9~',
+    p_control_title => q'~Ensure 'ALTER SYSTEM' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('ALTER SYSTEM')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('ALTER SYSTEM')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.10~',
+    p_control_title => q'~Ensure 'CREATE LIBRARY' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE LIBRARY')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE LIBRARY')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.1.11~',
+    p_control_title => q'~Ensure All 'SYSTEM' Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTEE = R.ROLE) CONNECT BY
+PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.1~',
+    p_control_title => q'~Ensure 'DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.2~',
+    p_control_title => q'~Ensure 'EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.3~',
+    p_control_title => q'~Ensure 'IMP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.4~',
+    p_control_title => q'~Ensure 'DATAPUMP_EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.5~',
+    p_control_title => q'~Ensure 'DATAPUMP_IMP_FULL_DATABASE' is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.6~',
+    p_control_title => q'~Ensure 'DV_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DV_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.7~',
+    p_control_title => q'~Ensure 'DV_AUDIT_CLEANUP' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_AUDIT_CLEANUP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_AUDIT_CLEANUP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.8~',
+    p_control_title => q'~Ensure 'OLAP_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('OLAP_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('OLAP_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.9~',
+    p_control_title => q'~Ensure 'LBAC_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LBAC_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('LBAC_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.10~',
+    p_control_title => q'~Ensure 'JAVA_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVA_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('JAVA_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.11~',
+    p_control_title => q'~Ensure 'JAVASYSPRIVS' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVAUSERPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVAUSERPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.12~',
+    p_control_title => q'~Ensure 'LOGSTDBY_ADMINISTRATOR' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LOGSTDBY_ADMINISTRATOR')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('LOGSTDBY_ADMINISTRATOR')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.13~',
+    p_control_title => q'~Ensure 'MAINTPLAN_APP' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('MAINTPLAN_APP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('MAINTPLAN_APP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.14~',
+    p_control_title => q'~Ensure 'JAVADEBUGPRIV' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVADEBUGPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVADEBUGPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.15~',
+    p_control_title => q'~Ensure 'DV_PATCH_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_PATCH_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_PATCH_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.16~',
+    p_control_title => q'~Ensure 'DV_POLICY_OWNER' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_POLICY_OWNER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_POLICY_OWNER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.17~',
+    p_control_title => q'~Ensure AUDIT_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('AUDIT_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.18~',
+    p_control_title => q'~Ensure 'AUDIT_VIEWER' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_VIEWER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('AUDIT_VIEWER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.19~',
+    p_control_title => q'~Ensure 'PDB_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('PDB_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('PDB_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.20~',
+    p_control_title => q'~Ensure 'SELECT_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('SELECT_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('SELECT_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.2.21~',
+    p_control_title => q'~Ensure 'EXECUTE_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXECUTE_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXECUTE_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.3.1~',
+    p_control_title => q'~Ensure 'ALL' Is Revoked On 'Sensitive' Tables (Automated)~',
+    p_assessment    => q'~Automated~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(c.con_id) AS containername, c.*
+FROM CDB_TAB_PRIVS c
+WHERE c.owner='SYS' AND c.table_name IN
+('CDB_LOCAL_ADMINAUTH$','DEFAULT_PWD$','ENC$','HISTGRM$','HIST_HEAD$','LINK$'
+,'PDB_SYNC$','SCHEDULER$_CREDENTIAL','USER$','USER_HISTORY$','XS$VERIFIERS')~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.5.1~',
+    p_control_title => q'~Ensure 'DBA_COL_PRIVS' Is Revoked From Unauthorized 'GRANTEE' (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_COL_PRIVS C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+AND O.OBJECT_NAME=C.TABLE_NAME AND O.ORACLE_MAINTAINED='N'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.6.1~',
+    p_control_title => q'~Ensure Proxy User Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME,J.* FROM CDB_PROXIES J~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.7.1~',
+    p_control_title => q'~Ensure Custom Java Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME, 'CUSTOM JAVA PRIVILEGE'
+AS "JAVA PRIVILEGE", J.*
+FROM  CDB_JAVA_POLICY J
+WHERE DBMS_UTILITY.GET_HASH_VALUE(
+   (KIND||GRANTEE||TYPE_SCHEMA||TYPE_NAME||NAME||ACTION||ENABLED), 2,
+2010304050)
+    NOT IN ( 800515347, 151129288, 976537527, 30494973, 1937158100,
+364905785, 1985378421,
+    1309631600, 1029870508, 1546167066, 184142192, 859260823,  1514899866,
+1402070492,
+    470712301, 856789430, 152768586, 1516266150, 742382950, 835887237,
+27519048,  127800042,
+    585523424, 116384647, 595031329, 519425340, 565011516, 104142482,
+365736720, 105705833,
+    382398907, 71790781, 62579200, 202664153, 1299118788, 105413428,
+545541759, 1119910297,
+    1712531359,  950804353, 809152653, 63495589, 1621785741, 888624743,
+1298694530, 1094834124,
+    1254650837, 1289482879,  236689110, 449271147, 356128445, 1546786406,
+374027524, 1161638561,
+    1892729955, 972739099, 539210486,  1634287789, 2000803097, 741404310,
+1879138467, 623589740,
+    498687020, 782135231, 1194762317, 884905623,  1896250536, 970596985,
+1082897628, 448525273,
+    1242306455, 23750295, 1550194092, 1772592918, 1603737720,  142136119,
+289269359, 1315794462,
+    96990011, 1095201623, 20727542, 1973515175, 540292561, 343336248,
+179666672, 9440468,
+    1825382930, 1855646886, 598800695, 631787483, 1467839181, 665909584,
+1461437618, 1030723320,
+    311348090, 1398805244, 179119810, 72116459, 1979563728, 57733337,
+54818063, 1367689664,
+    1508476194, 1523274446, 313964240, 1328352206, 689371984, 1299489851,
+121628881, 696051281,
+    1374172231,  42876420, 1612485481, 1577690416, 551128519, 1695954190,
+826909143, 983212206,
+    1658826990, 1414117567,  980793982, 742010474, 230612329, 245501173,
+424452954, 1700638178,
+    1789496901, 1202501131, 1731444159,  335317020, 253453448, 1936475065,
+777837297, 462854008,
+    368852509, 129848269, 549321505, 301832111, 1323272794,  92418107,
+715497686, 1854322866,
+    1423215774, 1973681135, 375128879, 553190962, 907068071, 638021877,
+1788624774, 1662401506,
+    1362996185, 478866415, 1598256716, 1469155910, 334914317, 870540049,
+768584438,  1885395547,
+    755918725, 350200414, 134114043, 43446111, 486709639, 83488831,
+139365274, 1260703408,
+    467391551,  701952766, 230475370, 736630396, 112581665, 376052929,
+471626899, 542637624,
+    680632989, 1103049052, 1347282494,  1559487896, 1592685230, 1654109637,
+1735090119,
+    1831375678, 1886462769, 1912735089, 1959933679,  1234282401, 1772747954,
+1514447620,
+    201492720, 167207852, 434486659, 1169110020, 1649953039, 2008561561,
+1333987409, 1192825952,
+    1740977823, 1501827236, 934263545, 1081144386, 310891775, 1279875884,
+1539747260,
+    1630393794, 1764828081, 336339792, 503085247, 639778710, 764636870,
+919569250, 993349195,
+    124317783, 426721579, 632709131, 703662335, 866241111, 1367484647,
+1523591677, 1902848780)~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.8.1~',
+    p_control_title => q'~Ensure Directory Object Access Is Revoked From Unauthorized 'GRANTEE' (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+C.OWNER,
+       C.DIRECTORY_NAME, C.DIRECTORY_PATH
+FROM CDB_DIRECTORIES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.DIRECTORY_NAME
+     AND OBJECT_TYPE='DIRECTORY'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.8.2~',
+    p_control_title => q'~Review Directory Objects Privileges (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(D.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       D.DIRECTORY_NAME,D.DIRECTORY_PATH,
+       T.GRANTEE, T.GRANTOR, T.PRIVILEGE, T.GRANTABLE, T.HIERARCHY, T.COMMON,
+T.INHERITED,
+       D.CON_ID
+       --T.GRANTEE, T.PRIVILEGE, T.GRANTABLE
+FROM CDB_DIRECTORIES D
+LEFT JOIN CDB_TAB_PRIVS T ON D.CON_ID = T.CON_ID AND D.OWNER=T.OWNER AND
+     D.DIRECTORY_NAME=T.TABLE_NAME AND T.TYPE='DIRECTORY'
+JOIN CDB_OBJECTS O ON D.CON_ID = O.CON_ID AND D.OWNER=O.OWNER AND
+O.OBJECT_NAME=D.DIRECTORY_NAME
+     AND O.OBJECT_TYPE='DIRECTORY'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.8.3~',
+    p_control_title => q'~Review External Tables With Preprocessor (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       REGEXP_SUBSTR(SUBSTR(ACCESS_PARAMETERS, INSTR(ACCESS_PARAMETERS,
+'PREPROCESSOR ')),
+       '''(.**)''', 1, 1, NULL, 1) AS FILENAME, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.TABLE_NAME AND
+     O.OBJECT_TYPE='TABLE'~'
+  );
+END;
+/
+
+BEGIN
+  cis_run_check(
+    p_control_id    => q'~6.8.4~',
+    p_control_title => q'~Review External Tables (Manual)~',
+    p_assessment    => q'~Manual~',
+    p_sql           => q'~SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O
+     ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+     AND O.OBJECT_NAME=C.TABLE_NAME
+     AND O.OBJECT_TYPE='TABLE'~'
+  );
+END;
+/
+
+
+PROMPT <h2>Summary</h2>
+COLUMN control_id FORMAT A12
+COLUMN control_title FORMAT A90
+COLUMN assessment FORMAT A12
+COLUMN result FORMAT A10
+COLUMN finding_count FORMAT 999999
+COLUMN error_message FORMAT A100
+
+SELECT
+  control_id,
+  control_title,
+  assessment,
+  result,
+  finding_count,
+  error_message
+FROM cis_audit_results
+ORDER BY
+  CASE result
+    WHEN 'FAIL' THEN 1
+    WHEN 'ERROR' THEN 2
+    WHEN 'REVIEW' THEN 3
+    WHEN 'PASS' THEN 4
+    ELSE 5
+  END,
+  control_id;
+
+PROMPT <h2>Summary Counts</h2>
+SELECT result, COUNT(*) AS controls
+FROM cis_audit_results
+GROUP BY result
+ORDER BY result;
+
+PROMPT <h2>Detailed Findings</h2>
+PROMPT <p>Each section below prints the underlying CIS query output. Automated controls should normally return no rows.</p>
+
+
+PROMPT <h3>2.3.1 - Ensure 'BACKGROUND_CORE_DUMP' Is Not Set To 'Full' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'BACKGROUND_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.2 - Ensure 'SHADOW_CORE_DUMP' Is Not Set To 'Full' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SHADOW_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.3 - Ensure 'ALLOW_GROUP_ACCESS_TO_SGA' Is Set To 'FALSE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'ALLOW_GROUP_ACCESS_TO_SGA'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.4 - Review Undocumented (Underscore) Parameters Not Set To 'DEFAULT' Values (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+       UPPER(NAME), UPPER(V.VALUE), V.UPDATE_COMMENT
+FROM GV$SYSTEM_PARAMETER V
+WHERE SUBSTR(NAME,1,1) = '_'
+AND ISDEFAULT = 'FALSE';
+
+
+PROMPT <h3>2.3.5 - Ensure 'OS_ROLES' Is Set To 'FALSE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.6 - Ensure 'REMOTE_OS_ROLES' Is Set To 'FALSE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.7 - Ensure 'SEC_MAX_FAILED_LOGIN_ATTEMPTS' Is Set To '3' Or Less (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME),UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME)='SEC_MAX_FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(VALUE,'1',1,'2',2,'3',3,9999)) > 3;
+
+
+PROMPT <h3>2.3.8 - Ensure 'SEC_PROTOCOL_ERROR_FURTHER_ACTION' Is Set To '(DROP,3)' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_FURTHER_ACTION'
+AND UPPER(VALUE) NOT IN ('(DROP,3)','(DROP, 3)','DROP,3','DROP, 3' )
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.9 - Ensure 'SEC_PROTOCOL_ERROR_TRACE_ACTION' Is Set To 'LOG' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_TRACE_ACTION'
+AND UPPER(VALUE) != 'LOG'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.10 - Ensure 'SEC_RETURN_SERVER_RELEASE_BANNER' Is Set To 'FALSE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_RETURN_SERVER_RELEASE_BANNER'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.11 - Ensure 'REMOTE_LOGIN_PASSWORDFILE' Is Set To 'NONE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE (V.CON_ID,
+               0, 'ENTIRE-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               1, 'ROOTONLY-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               CON_ID_TO_CON_NAME (V.CON_ID))    AS CONTAINERNAME,
+       UPPER (V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER (NAME) = 'REMOTE_LOGIN_PASSWORDFILE'
+AND  (
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') = 0 AND UPPER (VALUE) != 'NONE')
+      OR
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') > 0 AND UPPER (VALUE) != 'EXCLUSIVE')
+     );
+
+
+PROMPT <h3>2.3.12 - Ensure 'REMOTE_LISTENER' Is Empty (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_LISTENER'
+AND VALUE IS NOT NULL
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.13 - Ensure 'RESOURCE_LIMIT' Is Set To 'TRUE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'RESOURCE_LIMIT'
+AND UPPER(VALUE) != 'TRUE'
+ORDER BY CON_ID;
+
+
+PROMPT <h3>2.3.14 - Ensure 'REMOTE_OS_AUTHENT' Is Set to 'FALSE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_AUTHENT'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+Ensure VALUE is set to FALSE.;
+
+
+PROMPT <h3>2.3.15 - Ensure 'SEC_CASE_SENSITIVE_LOGON' Is Set to 'TRUE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_CASE_SENSITIVE_LOGON'
+AND UPPER(VALUE) != 'TRUE'
+ORDER BY CON_ID;
+Ensure VALUE is set to TRUE.;
+
+
+PROMPT <h3>3.1 - Ensure 'FAILED_LOGIN_ATTEMPTS' Is Less Than Or Equal To '5' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(P.LIMIT, 'DEFAULT',
+                              (SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='FAILED_LOGIN_ATTEMPTS'
+                               AND CON_ID = P.CON_ID),
+                        'UNLIMITED','9999',P.LIMIT)) > 5
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>3.2 - Ensure 'PASSWORD_LOCK_TIME' Is Greater Than Or Equal To '1' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_LOCK_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED','9999',P.LIMIT)) < 1
+AND P.RESOURCE_NAME = 'PASSWORD_LOCK_TIME'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>3.3 - Ensure 'PASSWORD_LIFE_TIME + PASSWORD_GRACE_TIME' Is Less Than Or Equal To '365' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH PWD_LIFE_TIME
+AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_LIFE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_LIFE_TIME'),
+PWD_GRACE_TIME AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_GRACE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_GRACE_TIME')
+SELECT L.CONTAINERNAME, L.PROFILE, L.RESOURCE_NAME, L.LIMIT, G.RESOURCE_NAME,
+G.LIMIT
+FROM PWD_LIFE_TIME L, PWD_GRACE_TIME G
+WHERE L.CON_ID = G.CON_ID
+AND L.PROFILE = G.PROFILE
+AND L.LIMIT + G.LIMIT > 365
+ORDER BY L.CON_ID, L.PROFILE, L.RESOURCE_NAME;
+
+
+PROMPT <h3>3.4 - Ensure 'PASSWORD_REUSE_MAX' Is Set To 'UNLIMITED' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_REUSE_MAX'
+      AND CON_ID = P.CON_ID),
+                       'UNLIMITED','9999',P.LIMIT)) < 9999
+AND P.RESOURCE_NAME = 'PASSWORD_REUSE_MAX'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>3.5 - Ensure 'PASSWORD_VERIFY_FUNCTION' Is Set For All Profiles (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND P.LIMIT = 'NULL'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>3.6 - Ensure 'PASSWORD_VERIFY_FUNCTION' Is Configured Correctly (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(CON_ID)) AS CONTAINERNAME,
+LINE, TEXT
+FROM CDB_SOURCE
+WHERE (CON_ID,NAME) IN ( SELECT DISTINCT CON_ID, LIMIT
+FROM SYS.CDB_PROFILES
+WHERE RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND (LIMIT IS NOT NULL OR LIMIT != 'DEFAULT'))
+ORDER BY CON_ID, NAME, LINE;
+
+
+PROMPT <h3>3.7 - Ensure 'PASSWORD_ROLLOVER_TIME' Is Set To '0' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  TO_NUMBER(DECODE(P.LIMIT,'DEFAULT',(SELECT LIMIT
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'
+                                 AND CON_ID = P.CON_ID),
+                              P.LIMIT)) > 0
+AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>3.8 - Ensure 'INACTIVE_ACCOUNT_TIME' Is Less Than Or Equal To '120' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+AND TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED',9999,
+                       P.LIMIT)) > 120
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+
+
+PROMPT <h3>4.1 - Ensure All Default Passwords Are Changed (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(C.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+A.USERNAME, C.ACCOUNT_STATUS
+FROM CDB_USERS_WITH_DEFPWD A, CDB_USERS C
+WHERE A.USERNAME = C.USERNAME
+ORDER BY C.CON_ID;
+
+
+PROMPT <h3>4.2 - Ensure No Custom 'ORACLE_MAINTAINED' Users Exist (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME, USERNAME
+FROM CDB_USERS C
+WHERE ORACLE_MAINTAINED = 'Y'
+AND USERNAME NOT IN (
+    'ANONYMOUS','APPQOSSYS','AUDSYS','CTXSYS','DBSFWUSER',
+    'DBSNMP','DIP','DVF','DVSYS','GGSYS','GSMADMIN_INTERNAL',
+    'GSMCATUSER','GSMROOTUSER','GSMUSER','LBACSYS','MDDATA',
+    'MDSYS','OJVMSYS','OLAPSYS','ORACLE_OCM','ORDDATA',
+    'ORDPLUGINS','ORDSYS','OUTLN','REMOTE_SCHEDULER_AGENT',
+    'SI_INFORMTN_SCHEMA','SYS','SYS$UMF','SYSBACKUP','SYSDG',
+    'SYSKM','SYSRAC','SYSTEM','WMSYS','XDB','XS$NULL'
+    )
+ORDER BY 1;
+
+
+PROMPT <h3>4.3 - Review The Users Created Through Real Application Security (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(C.CON_ID,0,'ENTIRE-'|| SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+C.NAME, C.DIRECT_LOGON_USER, C.STATUS, ACCOUNT_STATUS
+FROM CDB_XS_USERS C
+WHERE C.NAME NOT IN ('XSGUEST');
+
+
+PROMPT <h3>4.4 - Ensure Old Password Versions Are Not Used (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(C.CON_ID,
+            0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+    C.USERNAME,
+    C.PASSWORD_VERSIONS
+FROM CDB_USERS C
+WHERE NOT REGEXP_LIKE(C.PASSWORD_VERSIONS, '^\s*12C\s*$')
+and username not in ('SYS')
+order by USERNAME;
+
+
+PROMPT <h3>4.5 - Ensure The Latest Version of The Password File Is Used (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT inst_id,format
+FROM GV$PASSWORDFILE_INFO
+WHERE FORMAT !='12.2';
+
+
+PROMPT <h3>4.6 - Ensure That Users In Different RAC Instances Are Identical In PW Files (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+select username
+from GV$PWFILE_USERS
+group by username
+having count(distinct inst_id) < (select count(distinct inst_id) from
+GV$PWFILE_USERS);
+
+
+PROMPT <h3>4.7 - Ensure No Public Database Links Exist (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(V.CON_ID, 0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+DB_LINK, HOST
+FROM CDB_DB_LINKS V
+WHERE OWNER = 'PUBLIC';
+
+
+PROMPT <h3>4.8 - Ensure That Database Link Passwords Are Using The Latest Encryption (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT DECODE(v.con_id, 0, 'Entire-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       1, 'RootOnly-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       CON_ID_TO_CON_NAME(v.con_id)) AS container_name,
+name AS db_link,
+host,
+userid
+FROM CONTAINERS("SYS"."LINK$") v
+WHERE substr(passwordx,1,2)!='06';
+
+
+PROMPT <h3>5.1.1 - Ensure All Auditable System Actions Commands Are Audited (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH PRIVS(PRIVILEGE) AS (
+SELECT DISTINCT A.PRIVILEGE AS NAME FROM DBA_SYS_PRIVS A
+    WHERE A.PRIVILEGE NOT IN (SELECT NAME FROM AUDITABLE_SYSTEM_ACTIONS WHERE
+COMPONENT='Standard')
+    AND PRIVILEGE NOT IN ('INHERIT ANY PRIVILEGES')
+    UNION
+    SELECT A.NAME FROM AUDITABLE_SYSTEM_ACTIONS A
+    WHERE COMPONENT='Standard'
+    AND A.NAME NOT IN
+('ALL','SELECT','DELETE','INSERT','UPDATE','EXECUTE','LOGON','LOGOFF')
+),
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.PRIVILEGE FROM V$CONTAINERS C, PRIVS LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN (SELECT PRIVILEGE FROM PRIVS )
+       AND AUD.AUDIT_OPTION_TYPE IN ('SYSTEM PRIVILEGE','STANDARD ACTION')
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+
+
+PROMPT <h3>5.1.2 - Ensure the 'LOGON' AND 'LOGOFF' Actions Audit Is Enabled (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.COLUMN_VALUE AS AUDIT_OPTION FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('LOGON','LOGOFF')) LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('LOGON','LOGOFF')
+       AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+
+
+PROMPT <h3>5.1.3 - Ensure Critical Packages Are Audited (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OBJECT_NAME) AS(
+SELECT C.NAME, C.CON_ID, LL.* FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('DBMS_AW','DBMS_CRYPTO','DBMS_FGA',
+'DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR',
+'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+'DBMS_OBFUSCATION_TOOLKIT')
+) LL WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION,
+AUD.OBJECT_NAME, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.OBJECT_NAME IN
+('DBMS_AW','DBMS_CRYPTO','DBMS_FGA','DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR'
+,
+  'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+  'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+  'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+  'DBMS_OBFUSCATION_TOOLKIT')
+    AND AUD.AUDIT_OPTION_TYPE = 'OBJECT ACTION'
+    AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS CONTAINERNAME,
+ENABLED.*
+      FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+      WHERE ENABLED.SUCCESS = 'YES'
+        AND ENABLED.FAILURE = 'YES'
+        AND ENABLED.ENABLED_OPTION = 'BY USER'
+        AND ENABLED.ENTITY_NAME = 'ALL USERS'
+        AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+        AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OBJECT_NAME
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.OBJECT_NAME = C.AUDIT_OBJECT_NAME AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+
+
+PROMPT <h3>5.1.4 - Ensure All Export Activities Are Audited (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, 'EXPORT' AS AUDIT_OPTION FROM V$CONTAINERS C WHERE
+C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('EXPORT')
+       AND AUD.AUDIT_OPTION_TYPE = 'DATAPUMP ACTION'
+       AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS
+CONTAINERNAME, ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+
+
+PROMPT <h3>5.1.5 - Ensure The Use Of SYS* Privileges Is Audited (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION, ENTITY_NAME_EXPECTED) AS (
+  SELECT C.NAME, C.CON_ID, 'ALL' AS AUDIT_OPTION, LL.COLUMN_VALUE AS
+ENTITY_NAME_EXPECTED FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLI
+C')) LL
+  WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS (
+  SELECT DISTINCT AUD.CON_ID, AUD.AUDIT_OPTION, ENABLED.ENTITY_NAME
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD,
+CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+  WHERE ENABLED.CON_ID = AUD.CON_ID
+    AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+    AND AUD.AUDIT_OPTION IN ('ALL')
+    AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+    AND ENABLED.SUCCESS = 'YES'
+    AND ENABLED.FAILURE = 'YES'
+    AND ENABLED.ENABLED_OPTION = 'BY USER'
+    AND ENABLED.ENTITY_NAME IN
+('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLIC')
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION, C.ENTITY_NAME_EXPECTED
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.ENTITY_NAME = C.ENTITY_NAME_EXPECTED AND E.CON_ID = C.CON_ID
+) ORDER BY 1, 3;
+
+
+PROMPT <h3>6.1.1 - Ensure '%ANY%' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE LIKE '%ANY%'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE LIKE '%ANY%' AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.2 - Ensure Admin Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE ADMIN_OPTION = 'YES'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.ADMIN_OPTION = 'Y' AND P.GRANTEE
+= R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.3 - Ensure 'IMPORT' And 'EXPORT' 'FULL DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('IMPORT FULL DATABASE','EXPORT FULL DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('IMPORT FULL
+DATABASE','EXPORT FULL DATABASE') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR
+GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.4 - Ensure 'CREATE EXTERNAL JOB' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE EXTERNAL JOB')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE EXTERNAL
+JOB') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.5 - Ensure 'BECOME USER' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('BECOME USER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('BECOME USER') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.6 - Ensure 'TEXT DATASTORE ACCESS' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('TEXT DATASTORE ACCESS')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('TEXT DATASTORE
+ACCESS') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.7 - Ensure 'CREATE', 'ALTER', And 'DROP' 'PUBLIC DATABASE LINK' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE PUBLIC DATABASE LINK','ALTER PUBLIC DATABASE
+LINK','DROP PUBLIC DATABASE LINK')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE PUBLIC
+DATABASE LINK','ALTER PUBLIC DATABASE LINK','DROP PUBLIC DATABASE LINK') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.8 - Ensure 'LOGMINING' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('LOGMINING')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('LOGMINING') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.9 - Ensure 'ALTER SYSTEM' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('ALTER SYSTEM')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('ALTER SYSTEM')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.10 - Ensure 'CREATE LIBRARY' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE LIBRARY')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE LIBRARY')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.1.11 - Ensure All 'SYSTEM' Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTEE = R.ROLE) CONNECT BY
+PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.1 - Ensure 'DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.2 - Ensure 'EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.3 - Ensure 'IMP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.4 - Ensure 'DATAPUMP_EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.5 - Ensure 'DATAPUMP_IMP_FULL_DATABASE' is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.6 - Ensure 'DV_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DV_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.7 - Ensure 'DV_AUDIT_CLEANUP' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_AUDIT_CLEANUP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_AUDIT_CLEANUP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.8 - Ensure 'OLAP_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('OLAP_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('OLAP_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.9 - Ensure 'LBAC_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LBAC_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('LBAC_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.10 - Ensure 'JAVA_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVA_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('JAVA_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.11 - Ensure 'JAVASYSPRIVS' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVAUSERPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVAUSERPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.12 - Ensure 'LOGSTDBY_ADMINISTRATOR' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LOGSTDBY_ADMINISTRATOR')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('LOGSTDBY_ADMINISTRATOR')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.13 - Ensure 'MAINTPLAN_APP' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('MAINTPLAN_APP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('MAINTPLAN_APP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.14 - Ensure 'JAVADEBUGPRIV' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVADEBUGPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVADEBUGPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.15 - Ensure 'DV_PATCH_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_PATCH_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_PATCH_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.16 - Ensure 'DV_POLICY_OWNER' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_POLICY_OWNER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_POLICY_OWNER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.17 - Ensure AUDIT_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('AUDIT_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.18 - Ensure 'AUDIT_VIEWER' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_VIEWER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('AUDIT_VIEWER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.19 - Ensure 'PDB_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('PDB_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('PDB_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.20 - Ensure 'SELECT_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('SELECT_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('SELECT_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.2.21 - Ensure 'EXECUTE_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXECUTE_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXECUTE_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+
+
+PROMPT <h3>6.3.1 - Ensure 'ALL' Is Revoked On 'Sensitive' Tables (Automated)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(c.con_id) AS containername, c.*
+FROM CDB_TAB_PRIVS c
+WHERE c.owner='SYS' AND c.table_name IN
+('CDB_LOCAL_ADMINAUTH$','DEFAULT_PWD$','ENC$','HISTGRM$','HIST_HEAD$','LINK$'
+,'PDB_SYNC$','SCHEDULER$_CREDENTIAL','USER$','USER_HISTORY$','XS$VERIFIERS');
+
+
+PROMPT <h3>6.5.1 - Ensure 'DBA_COL_PRIVS' Is Revoked From Unauthorized 'GRANTEE' (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_COL_PRIVS C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+AND O.OBJECT_NAME=C.TABLE_NAME AND O.ORACLE_MAINTAINED='N';
+
+
+PROMPT <h3>6.6.1 - Ensure Proxy User Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME,J.* FROM CDB_PROXIES J;
+
+
+PROMPT <h3>6.7.1 - Ensure Custom Java Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME, 'CUSTOM JAVA PRIVILEGE'
+AS "JAVA PRIVILEGE", J.*
+FROM  CDB_JAVA_POLICY J
+WHERE DBMS_UTILITY.GET_HASH_VALUE(
+   (KIND||GRANTEE||TYPE_SCHEMA||TYPE_NAME||NAME||ACTION||ENABLED), 2,
+2010304050)
+    NOT IN ( 800515347, 151129288, 976537527, 30494973, 1937158100,
+364905785, 1985378421,
+    1309631600, 1029870508, 1546167066, 184142192, 859260823,  1514899866,
+1402070492,
+    470712301, 856789430, 152768586, 1516266150, 742382950, 835887237,
+27519048,  127800042,
+    585523424, 116384647, 595031329, 519425340, 565011516, 104142482,
+365736720, 105705833,
+    382398907, 71790781, 62579200, 202664153, 1299118788, 105413428,
+545541759, 1119910297,
+    1712531359,  950804353, 809152653, 63495589, 1621785741, 888624743,
+1298694530, 1094834124,
+    1254650837, 1289482879,  236689110, 449271147, 356128445, 1546786406,
+374027524, 1161638561,
+    1892729955, 972739099, 539210486,  1634287789, 2000803097, 741404310,
+1879138467, 623589740,
+    498687020, 782135231, 1194762317, 884905623,  1896250536, 970596985,
+1082897628, 448525273,
+    1242306455, 23750295, 1550194092, 1772592918, 1603737720,  142136119,
+289269359, 1315794462,
+    96990011, 1095201623, 20727542, 1973515175, 540292561, 343336248,
+179666672, 9440468,
+    1825382930, 1855646886, 598800695, 631787483, 1467839181, 665909584,
+1461437618, 1030723320,
+    311348090, 1398805244, 179119810, 72116459, 1979563728, 57733337,
+54818063, 1367689664,
+    1508476194, 1523274446, 313964240, 1328352206, 689371984, 1299489851,
+121628881, 696051281,
+    1374172231,  42876420, 1612485481, 1577690416, 551128519, 1695954190,
+826909143, 983212206,
+    1658826990, 1414117567,  980793982, 742010474, 230612329, 245501173,
+424452954, 1700638178,
+    1789496901, 1202501131, 1731444159,  335317020, 253453448, 1936475065,
+777837297, 462854008,
+    368852509, 129848269, 549321505, 301832111, 1323272794,  92418107,
+715497686, 1854322866,
+    1423215774, 1973681135, 375128879, 553190962, 907068071, 638021877,
+1788624774, 1662401506,
+    1362996185, 478866415, 1598256716, 1469155910, 334914317, 870540049,
+768584438,  1885395547,
+    755918725, 350200414, 134114043, 43446111, 486709639, 83488831,
+139365274, 1260703408,
+    467391551,  701952766, 230475370, 736630396, 112581665, 376052929,
+471626899, 542637624,
+    680632989, 1103049052, 1347282494,  1559487896, 1592685230, 1654109637,
+1735090119,
+    1831375678, 1886462769, 1912735089, 1959933679,  1234282401, 1772747954,
+1514447620,
+    201492720, 167207852, 434486659, 1169110020, 1649953039, 2008561561,
+1333987409, 1192825952,
+    1740977823, 1501827236, 934263545, 1081144386, 310891775, 1279875884,
+1539747260,
+    1630393794, 1764828081, 336339792, 503085247, 639778710, 764636870,
+919569250, 993349195,
+    124317783, 426721579, 632709131, 703662335, 866241111, 1367484647,
+1523591677, 1902848780);
+
+
+PROMPT <h3>6.8.1 - Ensure Directory Object Access Is Revoked From Unauthorized 'GRANTEE' (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+C.OWNER,
+       C.DIRECTORY_NAME, C.DIRECTORY_PATH
+FROM CDB_DIRECTORIES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.DIRECTORY_NAME
+     AND OBJECT_TYPE='DIRECTORY';
+
+
+PROMPT <h3>6.8.2 - Review Directory Objects Privileges (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(D.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       D.DIRECTORY_NAME,D.DIRECTORY_PATH,
+       T.GRANTEE, T.GRANTOR, T.PRIVILEGE, T.GRANTABLE, T.HIERARCHY, T.COMMON,
+T.INHERITED,
+       D.CON_ID
+       --T.GRANTEE, T.PRIVILEGE, T.GRANTABLE
+FROM CDB_DIRECTORIES D
+LEFT JOIN CDB_TAB_PRIVS T ON D.CON_ID = T.CON_ID AND D.OWNER=T.OWNER AND
+     D.DIRECTORY_NAME=T.TABLE_NAME AND T.TYPE='DIRECTORY'
+JOIN CDB_OBJECTS O ON D.CON_ID = O.CON_ID AND D.OWNER=O.OWNER AND
+O.OBJECT_NAME=D.DIRECTORY_NAME
+     AND O.OBJECT_TYPE='DIRECTORY';
+
+
+PROMPT <h3>6.8.3 - Review External Tables With Preprocessor (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       REGEXP_SUBSTR(SUBSTR(ACCESS_PARAMETERS, INSTR(ACCESS_PARAMETERS,
+'PREPROCESSOR ')),
+       '''(.**)''', 1, 1, NULL, 1) AS FILENAME, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.TABLE_NAME AND
+     O.OBJECT_TYPE='TABLE';
+
+
+PROMPT <h3>6.8.4 - Review External Tables (Manual)</h3>
+PROMPT <p>Finding rows:</p>
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O
+     ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+     AND O.OBJECT_NAME=C.TABLE_NAME
+     AND O.OBJECT_TYPE='TABLE';
+
+
+PROMPT <h2>Cleanup</h2>
+DROP PROCEDURE cis_run_check;
+DROP TABLE cis_audit_results PURGE;
+
+SET MARKUP HTML OFF
+SPOOL OFF
+
+PROMPT Done. Open oracle_19c_cis_db_audit_results.html in a browser or Excel.
