@@ -1,0 +1,2757 @@
+CIS Oracle Database 19c Benchmark v2.0.0 - Audit Queries / Audit Procedures
+Source PDF: CIS_Oracle_Database_19c_Benchmark_v2.0.0.pdf
+Extracted recommendation audit sections: 92
+==========================================================================================
+
+1. 1.1 Ensure That Appropriate Version/Patches For Oracle Software Are Installed (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, use the following example shell command as
+appropriate for your environment.
+For example, on Linux systems:
+opatch lsinventory | grep -e "^.*<latest_patch_version_number>\s*.*$"
+For example, on Windows systems:
+opatch lsinventory | find "<latest_patch_version_number>"
+
+==========================================================================================
+
+2. 2.1.1 Ensure 'extproc' Is Not Enabled (Automated)
+------------------------------------------------------------------------------------------
+To audit this recommendation, execute the following shell commands as appropriate for
+your Linux/Windows environment.
+Linux environment:
+grep -i extproc $ORACLE_HOME/network/admin/listener.ora
+Windows environment:
+find /I "extproc" %ORACLE_HOME%\network\admin\listener.ora
+Ensure no extproc entries are returned.
+If extproc entries exist in listener.ora, verify that one of the documented exception
+cases applies (multi-threaded agent, MTS/Windows, or AGENT clause redirection).
+Otherwise, the configuration is non-compliant.
+
+==========================================================================================
+
+3. 2.1.2 Ensure 'ACCEPT_MD5_CERTS' Is Configured Correctly (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+grep -Ei "^[^#]*ACCEPT_MD5_CERTS\s*=\s*TRUE\s*$"
+"$ORACLE_HOME/network/admin/listener.ora"
+On the Windows platform, execute the following PowerShell command to audit this
+recommendation.
+Select-String -Path $Env:ORACLE_HOME\network\admin\listener.ora -Pattern
+"^\s*ACCEPT_MD5_CERTS\s*=\s*TRUE\s*$" -CaseSensitive:$false
+To be compliant with this recommendation, the output of this command should be NULL.
+The audit command above assumes that listener.ora is located in the default path
+$ORACLE_HOME/network/admin/listener.ora. If this is not the case, please specify
+the correct location. For example, you may be using the TNS_ADMIN environment
+variable to point to the location of SQLNET.ORA and TNSNAMES.ORA.
+
+==========================================================================================
+
+4. 2.1.3 Ensure 'ACCEPT_SHA1_CERTS' Is Configured Correctly (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+grep -Ei "^[^#]*ACCEPT_SHA1_CERTS\s*=\s*TRUE\s*$"
+"$ORACLE_HOME/network/admin/listener.ora"
+On the Windows platform, execute the following command to audit this
+recommendation.
+Select-String -Path $Env:ORACLE_HOME\network\admin\listener.ora -Pattern
+"^\s*ACCEPT_SHA1_CERTS\s*=\s*TRUE\s*$" -CaseSensitive:$false
+To be compliant with this recommendation, the output of this command should be NULL.
+The audit command above assumes that listener.ora is located in the default path
+$ORACLE_HOME/network/admin/listener.ora. If this is not the case, please specify
+the correct location. For example, you may be using the TNS_ADMIN environment
+variable to point to the location of SQLNET.ORA and TNSNAMES.ORA.
+
+==========================================================================================
+
+5. 2.1.4 Ensure 'ALLOWED_WEAK_CERT_ALGORITHMS' Is NOT Set. (Automated)
+------------------------------------------------------------------------------------------
+To audit this recommendation:
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/listener.ora"
+if grep -qi "^\s*ALLOWED_WEAK_CERT_ALGORITHMS\s*=\s*(NONE)\s*$" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "^\s*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"; then
+  grep -i "^\s*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\listener.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^ALLOWED_WEAK_CERT_ALGORITHMS") {
+    $lineFound = $true
+    if ($line -match "(?i)^ALLOWED_WEAK_CERT_ALGORITHMS\s*=\s*\(NONE\)\s*$")
+{
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that listener.ora is located in the default path
+$ORACLE_HOME/network/admin/listener.ora. If this is not the case, please specify
+the correct location. For example, you may be using the TNS_ADMIN environment
+variable to point to the location of SQLNET.ORA and TNSNAMES.ORA.
+
+==========================================================================================
+
+6. 2.2.1 Ensure 'ACCEPT_MD5_CERTS' Is NOT Set (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+grep -Ei "^[^#]*ACCEPT_MD5_CERTS\s*=\s*TRUE\s*$"
+"$ORACLE_HOME/network/admin/sqlnet.ora"
+On the Windows platform, execute the following Powershell command to audit this
+recommendation.
+Select-String -Path $Env:ORACLE_HOME\network\admin\sqlnet.ora -Pattern
+"^\s*ACCEPT_MD5_CERTS\s*=\s*TRUE\s*$" -CaseSensitive:$false
+To be compliant with this recommendation, the output of this command should be NULL.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+7. 2.2.2 Ensure 'ACCEPT_SHA1_CERTS' Is NOT Set (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+grep -Ei "^[^#]*ACCEPT_SHA1_CERTS\s*=\s*TRUE\s*$"
+"$ORACLE_HOME/network/admin/sqlnet.ora"
+On the Windows platform, execute the following command to audit this
+recommendation.
+Select-String -Path $Env:ORACLE_HOME\network\admin\sqlnet.ora -Pattern
+"^\s*ACCEPT_SHA1_CERTS\s*=\s*TRUE\s*$" -CaseSensitive:$false
+To be compliant with this recommendation, the output of this command should be NULL.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+8. 2.2.3 Ensure 'ALLOWED_WEAK_CERT_ALGORITHMS' Is NOT Set (Automated)
+------------------------------------------------------------------------------------------
+To audit this recommendation:
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*ALLOWED_WEAK_CERT_ALGORITHMS\s*=\s*(NONE)\s*$" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "^\s*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"; then
+  grep -i "^\s*ALLOWED_WEAK_CERT_ALGORITHMS" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^ALLOWED_WEAK_CERT_ALGORITHMS") {
+    $lineFound = $true
+    if ($line -match "(?i)^ALLOWED_WEAK_CERT_ALGORITHMS\s*=\s*\(NONE\)\s*$")
+{
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+9. 2.2.4 Ensure 'SQLNET.ALLOWED_LOGON_VERSION_CLIENT' Is Set To 12a (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ALLOWED_LOGON_VERSION_CLIENT\s*=\s*12a\s*$"
+"$filePath"; then
+  # This is compliant.
+  :
+elif grep -qi "^\s*#.*SQLNET\.ALLOWED_LOGON_VERSION_CLIENT" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.ALLOWED_LOGON_VERSION_CLIENT" "$filePath"; then
+  grep -i "SQLNET\.ALLOWED_LOGON_VERSION_CLIENT" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ALLOWED_LOGON_VERSION_CLIENT") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.ALLOWED_LOGON_VERSION_CLIENT\s*=\s*12a$")
+{
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+10. 2.2.5 Ensure 'SQLNET.ALLOWED_LOGON_VERSION_SERVER' Is Set To 12a (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ALLOWED_LOGON_VERSION_SERVER\s*=\s*12a\s*$"
+"$filePath"; then
+  # This is compliant.
+  :
+elif grep -qi "^\s*#.*SQLNET\.ALLOWED_LOGON_VERSION_SERVER" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.ALLOWED_LOGON_VERSION_SERVER" "$filePath"; then
+  grep -i "SQLNET\.ALLOWED_LOGON_VERSION_SERVER" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ALLOWED_LOGON_VERSION_SERVER") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.ALLOWED_LOGON_VERSION_SERVER\s*=\s*12a$")
+{
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+11. 2.2.6 Ensure 'SQLNET.ENCRYPTION_CLIENT Is Set To 'REQUIRED' (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ENCRYPTION_CLIENT\s*=\s*REQUIRED\s*$" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_CLIENT" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.ENCRYPTION_CLIENT" "$filePath"; then
+  grep -i "SQLNET\.ENCRYPTION_CLIENT" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ENCRYPTION_CLIENT") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.ENCRYPTION_CLIENT\s*=\s*REQUIRED$") {
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The parameter is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance. The audit command above assumes that
+sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in the
+$ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+12. 2.2.7 Ensure 'SQLNET.ENCRYPTION_SERVER' Is Set To 'REQUIRED' (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ENCRYPTION_SERVER\s*=\s*REQUIRED\s*$" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_SERVER" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.ENCRYPTION_SERVER" "$filePath"; then
+  grep -i "SQLNET\.ENCRYPTION_SERVER" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ENCRYPTION_SERVER") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.ENCRYPTION_SERVER\s*=\s*REQUIRED$") {
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The parameter is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in the
+$ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+13. 2.2.8 Ensure 'SQLNET.ENCRYPTION_TYPES_CLIENT' Is Set To 'AES256' (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ENCRYPTION_TYPES_CLIENT\s*=\s*(AES256)" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_TYPES_CLIENT" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_TYPES_CLIENT\s*=\s*,.*" "$filePath";
+then
+  echo "Multiple encryption types are specified."
+elif grep -qi "SQLNET\.ENCRYPTION_TYPES_CLIENT" "$filePath"; then
+  grep -i "SQLNET\.ENCRYPTION_TYPES_CLIENT" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ENCRYPTION_TYPES_CLIENT") {
+    $lineFound = $true
+    if ($line -match
+"(?i)^SQLNET\.ENCRYPTION_TYPES_CLIENT\s*=\s*\(AES256\)$") {
+      # This is compliant.
+    } elseif ($line -match "(?i)^SQLNET\.ENCRYPTION_TYPES_CLIENT\s*=.*,.*") {
+      Write-Host "Multiple encryption types are specified."
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The parameter is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+The audit command above assumes that sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+14. 2.2.9 Ensure 'SQLNET.ENCRYPTION_TYPES_SERVER' Is Set To AES256 (Manual)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.ENCRYPTION_TYPES_SERVER\s*=\s*(AES256)" "$filePath";
+then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_TYPES_SERVER" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "^#.*SQLNET\.ENCRYPTION_TYPES_SERVER\s*=\s*,.*" "$filePath";
+then
+  echo "Multiple encryption types are specified."
+elif grep -qi "SQLNET\.ENCRYPTION_TYPES_SERVER" "$filePath"; then
+  grep -i "SQLNET\.ENCRYPTION_TYPES_SERVER" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.ENCRYPTION_TYPES_SERVER") {
+    $lineFound = $true
+    if ($line -match
+"(?i)^SQLNET\.ENCRYPTION_TYPES_SERVER\s*=\s*\(AES256\)$") {
+      # This is compliant.
+    } elseif ($line -match "(?i)^SQLNET\.ENCRYPTION_TYPES_SERVER\s*=.*,.*") {
+      Write-Host "Multiple encryption types are specified."
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The line 'SQLNET.ENCRYPTION_TYPES_SERVER' is not found in the
+file."
+}
+To be compliant with this recommendation, the output of this command should be
+NULL. Lack of results indicates compliance. The audit command above assumes that
+sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+15. 2.2.10 Ensure 'SQLNET.CRYPTO_CHECKSUM_CLIENT' Is Set To 'REQUIRED' (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.CRYPTO_CHECKSUM_CLIENT\s*=\s*REQUIRED\s*$"
+"$filePath"; then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.CRYPTO_CHECKSUM_CLIENT" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.CRYPTO_CHECKSUM_CLIENT" "$filePath"; then
+  grep -i "SQLNET\.CRYPTO_CHECKSUM_CLIENT" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.CRYPTO_CHECKSUM_CLIENT") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.CRYPTO_CHECKSUM_CLIENT\s*=\s*REQUIRED$") {
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance. The audit command above assumes that
+sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+16. 2.2.11 Ensure 'SQLNET.CRYPTO_CHECKSUM_SERVER' Is Set To 'REQUIRED' (Automated)
+------------------------------------------------------------------------------------------
+On the Linux platform, execute the following shell command to audit this
+recommendation.
+filePath="$ORACLE_HOME/network/admin/sqlnet.ora"
+if grep -qi "^\s*SQLNET\.CRYPTO_CHECKSUM_SERVER\s*=\s*REQUIRED\s*$"
+"$filePath"; then
+  # This is compliant.
+  :
+elif grep -qi "^#.*SQLNET\.CRYPTO_CHECKSUM_SERVER" "$filePath"; then
+  echo "The parameter is commented out."
+elif grep -qi "SQLNET\.CRYPTO_CHECKSUM_SERVER" "$filePath"; then
+  grep -i "SQLNET\.CRYPTO_CHECKSUM_SERVER" "$filePath"
+else
+  echo "The parameter is not found in the file."
+fi
+On the Windows platform, execute the following command to audit this
+recommendation.
+$filePath = "$Env:ORACLE_HOME\network\admin\sqlnet.ora"
+$content = Get-Content $filePath
+$lineFound = $false
+foreach ($line in $content) {
+  $line = $line.Trim()
+  if ($line -match "(?i)^SQLNET\.CRYPTO_CHECKSUM_SERVER") {
+    $lineFound = $true
+    if ($line -match "(?i)^SQLNET\.CRYPTO_CHECKSUM_SERVER\s*=\s*REQUIRED$") {
+      # This is compliant.
+    } else {
+      Write-Host $line
+    }
+  }
+}
+if (!$lineFound) {
+  Write-Host "The setting is not found in the file."
+}
+If the output shows FALSE or NONE, the control is not configured correctly.
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance. The audit command above assumes that
+sqlnet.ora is located in the default path
+$ORACLE_HOME/network/admin/sqlnet.ora. If this is not the case, please specify the
+correct location. For example, you might be using the TNS_ADMIN environment variable
+to point to the location of sqlnet.ora. Alternatively, sqlnet.ora could be located in
+the $ORACLE_BASE_HOME/network/admin or
+/opt/oracle/<release_number>/network/admin directories.
+
+==========================================================================================
+
+17. 2.3.1 Ensure 'BACKGROUND_CORE_DUMP' Is Not Set To 'Full' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'BACKGROUND_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+18. 2.3.2 Ensure 'SHADOW_CORE_DUMP' Is Not Set To 'Full' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SHADOW_CORE_DUMP'
+AND UPPER(VALUE) = 'FULL'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+19. 2.3.3 Ensure 'ALLOW_GROUP_ACCESS_TO_SGA' Is Set To 'FALSE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'ALLOW_GROUP_ACCESS_TO_SGA'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+20. 2.3.4 Review Undocumented (Underscore) Parameters Not Set To 'DEFAULT' Values (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+       UPPER(NAME), UPPER(V.VALUE), V.UPDATE_COMMENT
+FROM GV$SYSTEM_PARAMETER V
+WHERE SUBSTR(NAME,1,1) = '_'
+AND ISDEFAULT = 'FALSE';
+To be compliant with this recommendation, the output of this command should be NULL.
+If the output of this command is not NULL, then review the output for applicability of
+undocumented parameters for your organization.
+
+==========================================================================================
+
+21. 2.3.5 Ensure 'OS_ROLES' Is Set To 'FALSE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+22. 2.3.6 Ensure 'REMOTE_OS_ROLES' Is Set To 'FALSE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME), UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_ROLES'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+23. 2.3.7 Ensure 'SEC_MAX_FAILED_LOGIN_ATTEMPTS' Is Set To '3' Or Less (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+         UPPER(NAME),UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME)='SEC_MAX_FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(VALUE,'1',1,'2',2,'3',3,9999)) > 3;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+24. 2.3.8 Ensure 'SEC_PROTOCOL_ERROR_FURTHER_ACTION' Is Set To '(DROP,3)' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_FURTHER_ACTION'
+AND UPPER(VALUE) NOT IN ('(DROP,3)','(DROP, 3)','DROP,3','DROP, 3' )
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+25. 2.3.9 Ensure 'SEC_PROTOCOL_ERROR_TRACE_ACTION' Is Set To 'LOG' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_PROTOCOL_ERROR_TRACE_ACTION'
+AND UPPER(VALUE) != 'LOG'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+26. 2.3.10 Ensure 'SEC_RETURN_SERVER_RELEASE_BANNER' Is Set To 'FALSE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_RETURN_SERVER_RELEASE_BANNER'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+27. 2.3.11 Ensure 'REMOTE_LOGIN_PASSWORDFILE' Is Set To 'NONE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE (V.CON_ID,
+               0, 'ENTIRE-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               1, 'ROOTONLY-' || SYS_CONTEXT ('USERENV', 'DB_NAME'),
+               CON_ID_TO_CON_NAME (V.CON_ID))    AS CONTAINERNAME,
+       UPPER (V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER (NAME) = 'REMOTE_LOGIN_PASSWORDFILE'
+AND  (
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') = 0 AND UPPER (VALUE) != 'NONE')
+      OR
+      ((SELECT COUNT(*) FROM V$ARCHIVE_DEST  WHERE STATUS = 'VALID' AND
+TARGET = 'STANDBY') > 0 AND UPPER (VALUE) != 'EXCLUSIVE')
+     );
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+28. 2.3.12 Ensure 'REMOTE_LISTENER' Is Empty (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_LISTENER'
+AND VALUE IS NOT NULL
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+29. 2.3.13 Ensure 'RESOURCE_LIMIT' Is Set To 'TRUE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+         CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'RESOURCE_LIMIT'
+AND UPPER(VALUE) != 'TRUE'
+ORDER BY CON_ID;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+30. 2.3.14 Ensure 'REMOTE_OS_AUTHENT' Is Set to 'FALSE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'REMOTE_OS_AUTHENT'
+AND UPPER(VALUE) != 'FALSE'
+ORDER BY CON_ID;
+Ensure VALUE is set to FALSE.
+
+==========================================================================================
+
+31. 2.3.15 Ensure 'SEC_CASE_SENSITIVE_LOGON' Is Set to 'TRUE' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME, UPPER(V.VALUE)
+FROM GV$SYSTEM_PARAMETER V
+WHERE UPPER(NAME) = 'SEC_CASE_SENSITIVE_LOGON'
+AND UPPER(VALUE) != 'TRUE'
+ORDER BY CON_ID;
+Ensure VALUE is set to TRUE.
+
+==========================================================================================
+
+32. 3.1 Ensure 'FAILED_LOGIN_ATTEMPTS' Is Less Than Or Equal To '5' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'FAILED_LOGIN_ATTEMPTS'
+AND TO_NUMBER(DECODE(P.LIMIT, 'DEFAULT',
+                              (SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='FAILED_LOGIN_ATTEMPTS'
+                               AND CON_ID = P.CON_ID),
+                        'UNLIMITED','9999',P.LIMIT)) > 5
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+33. 3.2 Ensure 'PASSWORD_LOCK_TIME' Is Greater Than Or Equal To '1' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_LOCK_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED','9999',P.LIMIT)) < 1
+AND P.RESOURCE_NAME = 'PASSWORD_LOCK_TIME'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+34. 3.3 Ensure 'PASSWORD_LIFE_TIME + PASSWORD_GRACE_TIME' Is Less Than Or Equal To '365' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH PWD_LIFE_TIME
+AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_LIFE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_LIFE_TIME'),
+PWD_GRACE_TIME AS
+(SELECT CON_ID, DECODE(P.CON_ID,0,'ENTIRE-
+'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+                       CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME,
+TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_GRACE_TIME'
+                              AND CON_ID = P.CON_ID),
+'UNLIMITED','9999',
+P.LIMIT)) LIMIT
+FROM CDB_PROFILES P
+WHERE P.RESOURCE_NAME = 'PASSWORD_GRACE_TIME')
+SELECT L.CONTAINERNAME, L.PROFILE, L.RESOURCE_NAME, L.LIMIT, G.RESOURCE_NAME,
+G.LIMIT
+FROM PWD_LIFE_TIME L, PWD_GRACE_TIME G
+WHERE L.CON_ID = G.CON_ID
+AND L.PROFILE = G.PROFILE
+AND L.LIMIT + G.LIMIT > 365
+ORDER BY L.CON_ID, L.PROFILE, L.RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+35. 3.4 Ensure 'PASSWORD_REUSE_MAX' Is Set To 'UNLIMITED' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM CDB_PROFILES P
+WHERE TO_NUMBER(DECODE(P.LIMIT,
+'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                               FROM CDB_PROFILES
+                               WHERE PROFILE='DEFAULT'
+                               AND RESOURCE_NAME='PASSWORD_REUSE_MAX'
+      AND CON_ID = P.CON_ID),
+                       'UNLIMITED','9999',P.LIMIT)) < 9999
+AND P.RESOURCE_NAME = 'PASSWORD_REUSE_MAX'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+36. 3.5 Ensure 'PASSWORD_VERIFY_FUNCTION' Is Set For All Profiles (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND P.LIMIT = 'NULL'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+37. 3.6 Ensure 'PASSWORD_VERIFY_FUNCTION' Is Configured Correctly (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(CON_ID)) AS CONTAINERNAME,
+LINE, TEXT
+FROM CDB_SOURCE
+WHERE (CON_ID,NAME) IN ( SELECT DISTINCT CON_ID, LIMIT
+FROM SYS.CDB_PROFILES
+WHERE RESOURCE_NAME='PASSWORD_VERIFY_FUNCTION'
+AND (LIMIT IS NOT NULL OR LIMIT != 'DEFAULT'))
+ORDER BY CON_ID, NAME, LINE ;
+To be compliant with this recommendation, review the code to ensure that the function
+meets your organization's password complexity requirements..
+
+==========================================================================================
+
+38. 3.7 Ensure 'PASSWORD_ROLLOVER_TIME' Is Set To '0' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE  TO_NUMBER(DECODE(P.LIMIT,'DEFAULT',(SELECT LIMIT
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'
+                                 AND CON_ID = P.CON_ID),
+                              P.LIMIT)) > 0
+AND RESOURCE_NAME='PASSWORD_ROLLOVER_TIME'
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+39. 3.8 Ensure 'INACTIVE_ACCOUNT_TIME' Is Less Than Or Equal To '120' (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT DECODE(P.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(P.CON_ID)) AS CONTAINERNAME,
+P.PROFILE, P.RESOURCE_NAME, P.LIMIT
+FROM SYS.CDB_PROFILES P
+WHERE RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+AND TO_NUMBER(DECODE(P.LIMIT,
+                      'DEFAULT',(SELECT DECODE(LIMIT,'UNLIMITED',9999,LIMIT)
+                                 FROM CDB_PROFILES
+                                 WHERE PROFILE='DEFAULT'
+                                 AND RESOURCE_NAME='INACTIVE_ACCOUNT_TIME'
+                                 AND CON_ID = P.CON_ID),
+                      'UNLIMITED',9999,
+                       P.LIMIT)) > 120
+ORDER BY CON_ID, PROFILE, RESOURCE_NAME;
+To be compliant with this recommendation, the output of this command should be NULL.
+Lack of results indicates compliance.
+
+==========================================================================================
+
+40. 4.1 Ensure All Default Passwords Are Changed (Automated)
+------------------------------------------------------------------------------------------
+To check for accounts still using default passwords, execute the following SQL
+statement:
+SELECT DECODE(C.CON_ID,0,'ENTIRE-'||SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+A.USERNAME, C.ACCOUNT_STATUS
+FROM CDB_USERS_WITH_DEFPWD A, CDB_USERS C
+WHERE A.USERNAME = C.USERNAME
+ORDER BY C.CON_ID;
+Lack of results implies compliance.
+
+==========================================================================================
+
+41. 4.2 Ensure No Custom 'ORACLE_MAINTAINED' Users Exist (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement:
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,USERNAME,
+FROM CDB_USERS C
+WHERE ORACLE_MAINTAINED = 'Y'
+AND USERNAME NOT IN (
+    'ANONYMOUS','APPQOSSYS','AUDSYS','CTXSYS','DBSFWUSER',
+    'DBSNMP','DIP','DVF','DVSYS','GGSYS','GSMADMIN_INTERNAL',
+    'GSMCATUSER','GSMROOTUSER','GSMUSER','LBACSYS','MDDATA',
+    'MDSYS','OJVMSYS','OLAPSYS','ORACLE_OCM','ORDDATA',
+    'ORDPLUGINS','ORDSYS','OUTLN','REMOTE_SCHEDULER_AGENT',
+    'SI_INFORMTN_SCHEMA','SYS','SYS$UMF','SYSBACKUP','SYSDG',
+    'SYSKM','SYSRAC','SYSTEM','WMSYS','XDB','XS$NULL'
+    )
+ORDER BY 1;
+A lack of results implies compliance.
+
+==========================================================================================
+
+42. 4.3 Review The Users Created Through Real Application Security (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following statement:
+SELECT DECODE(C.CON_ID,0,'ENTIRE-'|| SYS_CONTEXT('USERENV','DB_NAME'),
+1,'ROOTONLY-'||SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+C.NAME, C.DIRECT_LOGON_USER, C.STATUS, ACCOUNT_STATUS
+FROM CDB_XS_USERS C
+WHERE C.NAME NOT IN ('XSGUEST');
+Review the list of RAS users. If any unauthorized user exists, this is a fail.
+
+==========================================================================================
+
+43. 4.4 Ensure Old Password Versions Are Not Used (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement:
+SELECT DECODE(C.CON_ID,
+            0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+            CON_ID_TO_CON_NAME(C.CON_ID)) AS CONTAINERNAME,
+    C.USERNAME,
+    C.PASSWORD_VERSIONS
+FROM CDB_USERS C
+WHERE NOT REGEXP_LIKE(C.PASSWORD_VERSIONS, '^\s*12C\s*$')
+and username not in ('SYS')
+order by USERNAME;
+A lack of results implies compliance.
+
+==========================================================================================
+
+44. 4.5 Ensure The Latest Version of The Password File Is Used (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following statement:
+SELECT inst_id,format
+FROM GV$PASSWORDFILE_INFO
+WHERE FORMAT !='12.2';
+A lack of results implies compliance.
+
+==========================================================================================
+
+45. 4.6 Ensure That Users In Different RAC Instances Are Identical In PW Files (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement:
+select username
+from GV$PWFILE_USERS
+group by username
+having count(distinct inst_id) < (select count(distinct inst_id) from
+GV$PWFILE_USERS);
+If any users are not identical across RAC Instances, this is a fail.
+
+==========================================================================================
+
+46. 4.7 Ensure No Public Database Links Exist (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+SELECT DECODE(V.CON_ID, 0, 'ENTIRE-' || SYS_CONTEXT('USERENV','DB_NAME'),
+1, 'ROOTONLY-' || SYS_CONTEXT('USERENV','DB_NAME'),
+CON_ID_TO_CON_NAME(V.CON_ID)) AS CONTAINERNAME,
+DB_LINK, HOST
+FROM CDB_DB_LINKS V
+WHERE OWNER = 'PUBLIC';
+Lack of results implies compliance.
+
+==========================================================================================
+
+47. 4.8 Ensure That Database Link Passwords Are Using The Latest Encryption (Automated)
+------------------------------------------------------------------------------------------
+To verify if database link passwords are still using the PASSWORDX column for encryption,
+execute the following SQL statement:
+SELECT DECODE(v.con_id, 0, 'Entire-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       1, 'RootOnly-' || SYS_CONTEXT('USERENV', 'DB_NAME'),
+                       CON_ID_TO_CON_NAME(v.con_id)) AS container_name,
+name AS db_link,
+host,
+userid
+FROM CONTAINERS("SYS"."LINK$") v
+WHERE substr(passwordx,1,2)!='06';
+Lack of results implies compliance.
+
+==========================================================================================
+
+48. 5.1.1 Ensure All Auditable System Actions Commands Are Audited (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement:
+WITH PRIVS(PRIVILEGE) AS (
+SELECT DISTINCT A.PRIVILEGE AS NAME FROM DBA_SYS_PRIVS A
+    WHERE A.PRIVILEGE NOT IN (SELECT NAME FROM AUDITABLE_SYSTEM_ACTIONS WHERE
+COMPONENT='Standard')
+    AND PRIVILEGE NOT IN ('INHERIT ANY PRIVILEGES')
+    UNION
+    SELECT A.NAME FROM AUDITABLE_SYSTEM_ACTIONS A
+    WHERE COMPONENT='Standard'
+    AND A.NAME NOT IN
+('ALL','SELECT','DELETE','INSERT','UPDATE','EXECUTE','LOGON','LOGOFF')
+),
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.PRIVILEGE FROM V$CONTAINERS C, PRIVS LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN (SELECT PRIVILEGE FROM PRIVS )
+       AND AUD.AUDIT_OPTION_TYPE IN ('SYSTEM PRIVILEGE','STANDARD ACTION')
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+Lack of results implies compliance.
+
+==========================================================================================
+
+49. 5.1.2 Ensure the 'LOGON' AND 'LOGOFF' Actions Audit Is Enabled (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, LL.COLUMN_VALUE AS AUDIT_OPTION FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('LOGON','LOGOFF')) LL
+WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT AUD.CON_ID, AUDIT_OPTION
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('LOGON','LOGOFF')
+       AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+       AND EXISTS (SELECT ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+Lack of results implies compliance.
+
+==========================================================================================
+
+50. 5.1.3 Ensure Critical Packages Are Audited (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OBJECT_NAME) AS(
+SELECT C.NAME, C.CON_ID, LL.* FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('DBMS_AW','DBMS_CRYPTO','DBMS_FGA',
+'DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR',
+'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+'DBMS_OBFUSCATION_TOOLKIT')
+) LL WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION,
+AUD.OBJECT_NAME, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.OBJECT_NAME IN
+('DBMS_AW','DBMS_CRYPTO','DBMS_FGA','DBMS_JAVA_TEST','DBMS_JOB','DBMS_LOGMNR'
+,
+  'DBMS_NETWORK_ACL_ADMIN','DBMS_REDACT','DBMS_REDEFINITION','DBMS_RLS',
+  'DBMS_SCHEDULER','DBMS_SQL_TRANSLATOR','DBMS_SYS_SQL','DBMS_TSDP_MANAGE',
+  'DBMS_TSDP_PROTECT','DBMS_XMLGEN','DBMS_XMLSTORE','OWA_UTIL',
+  'DBMS_OBFUSCATION_TOOLKIT')
+    AND AUD.AUDIT_OPTION_TYPE = 'OBJECT ACTION'
+    AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS CONTAINERNAME,
+ENABLED.*
+      FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+      WHERE ENABLED.SUCCESS = 'YES'
+        AND ENABLED.FAILURE = 'YES'
+        AND ENABLED.ENABLED_OPTION = 'BY USER'
+        AND ENABLED.ENTITY_NAME = 'ALL USERS'
+        AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+        AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OBJECT_NAME
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.OBJECT_NAME = C.AUDIT_OBJECT_NAME AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+Lack of results implies compliance.
+
+==========================================================================================
+
+51. 5.1.4 Ensure All Export Activities Are Audited (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+WITH
+CIS_AUDIT(NAME, CON_ID, AUDIT_OPTION) AS(
+SELECT C.NAME, C.CON_ID, 'EXPORT' AS AUDIT_OPTION FROM V$CONTAINERS C WHERE
+C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS
+( SELECT DISTINCT CON_ID_TO_CON_NAME(AUD.CON_ID) AS CONTAINERNAME,
+AUDIT_OPTION, AUD.POLICY_NAME, AUD.CON_ID
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD
+  WHERE AUD.AUDIT_OPTION IN ('EXPORT')
+       AND AUD.AUDIT_OPTION_TYPE = 'DATAPUMP ACTION'
+       AND EXISTS (SELECT CON_ID_TO_CON_NAME(ENABLED.CON_ID) AS
+CONTAINERNAME, ENABLED.*
+                   FROM CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+                   WHERE ENABLED.SUCCESS = 'YES'
+                       AND ENABLED.FAILURE = 'YES'
+                       AND ENABLED.ENABLED_OPTION = 'BY USER'
+                       AND ENABLED.ENTITY_NAME = 'ALL USERS'
+                       AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+                       AND ENABLED.CON_ID = AUD.CON_ID)
+)
+SELECT C.NAME, C.AUDIT_OPTION
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.CON_ID = C.CON_ID
+)
+ORDER BY 1, 2;
+Lack of results implies compliance.
+
+==========================================================================================
+
+52. 5.1.5 Ensure The Use Of SYS* Privileges Is Audited (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+WITH
+CIS_AUDIT(CONTAINERNAME, CON_ID, AUDIT_OPTION, ENTITY_NAME_EXPECTED) AS (
+  SELECT C.NAME, C.CON_ID, 'ALL' AS AUDIT_OPTION, LL.COLUMN_VALUE AS
+ENTITY_NAME_EXPECTED FROM V$CONTAINERS C,
+TABLE(DBMSOUTPUT_LINESARRAY('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLI
+C')) LL
+  WHERE C.OPEN_MODE='READ WRITE'
+),
+AUDIT_ENABLED AS (
+  SELECT DISTINCT AUD.CON_ID, AUD.AUDIT_OPTION, ENABLED.ENTITY_NAME
+  FROM CONTAINERS(AUDIT_UNIFIED_POLICIES) AUD,
+CONTAINERS(AUDIT_UNIFIED_ENABLED_POLICIES) ENABLED
+  WHERE ENABLED.CON_ID = AUD.CON_ID
+    AND ENABLED.POLICY_NAME = AUD.POLICY_NAME
+    AND AUD.AUDIT_OPTION IN ('ALL')
+    AND AUD.AUDIT_OPTION_TYPE = 'STANDARD ACTION'
+    AND ENABLED.SUCCESS = 'YES'
+    AND ENABLED.FAILURE = 'YES'
+    AND ENABLED.ENABLED_OPTION = 'BY USER'
+    AND ENABLED.ENTITY_NAME IN
+('SYS','SYSBACKUP','SYSDG','SYSKM','SYSRAC','PUBLIC')
+)
+SELECT C.CONTAINERNAME, C.AUDIT_OPTION, C.ENTITY_NAME_EXPECTED
+FROM CIS_AUDIT C
+WHERE NOT EXISTS (
+  SELECT 1 FROM AUDIT_ENABLED E WHERE E.AUDIT_OPTION = C.AUDIT_OPTION AND
+E.ENTITY_NAME = C.ENTITY_NAME_EXPECTED AND E.CON_ID = C.CON_ID
+) ORDER BY 1, 3;
+Lack of results implies compliance.
+
+==========================================================================================
+
+53. 6.1.1 Ensure '%ANY%' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE LIKE '%ANY%'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE LIKE '%ANY%' AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+54. 6.1.2 Ensure Admin Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE ADMIN_OPTION = 'YES'
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.ADMIN_OPTION = 'Y' AND P.GRANTEE
+= R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+55. 6.1.3 Ensure 'IMPORT' And 'EXPORT' 'FULL DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('IMPORT FULL DATABASE','EXPORT FULL DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('IMPORT FULL
+DATABASE','EXPORT FULL DATABASE') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR
+GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+56. 6.1.4 Ensure 'CREATE EXTERNAL JOB' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE EXTERNAL JOB')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE EXTERNAL
+JOB') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+57. 6.1.5 Ensure 'BECOME USER' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('BECOME USER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('BECOME USER') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+58. 6.1.6 Ensure 'TEXT DATASTORE ACCESS' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('TEXT DATASTORE ACCESS')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('TEXT DATASTORE
+ACCESS') AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+59. 6.1.7 Ensure 'CREATE', 'ALTER', And 'DROP' 'PUBLIC DATABASE LINK' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE PUBLIC DATABASE LINK','ALTER PUBLIC DATABASE
+LINK','DROP PUBLIC DATABASE LINK')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE PUBLIC
+DATABASE LINK','ALTER PUBLIC DATABASE LINK','DROP PUBLIC DATABASE LINK') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+60. 6.1.8 Ensure 'LOGMINING' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('LOGMINING')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('LOGMINING') AND
+P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+61. 6.1.9 Ensure 'ALTER SYSTEM' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('ALTER SYSTEM')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('ALTER SYSTEM')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+62. 6.1.10 Ensure 'CREATE LIBRARY' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+    WHERE PRIVILEGE IN ('CREATE LIBRARY')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.PRIVILEGE IN ('CREATE LIBRARY')
+AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+63. 6.1.11 Ensure All 'SYSTEM' Privileges Are Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+System privileges in Oracle can be granted directly to users or roles, and can also be
+inherited through role hierarchies, either directly or recursively. To remediate and
+revoke system privileges from unauthorized users or roles, it is essential to trace the
+chain of privilege grants by examining the Granted Privilege and How Granted columns.
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+PRIVILEGE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_SYS_PRIVS
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_SYS_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTEE = R.ROLE) CONNECT BY
+PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+64. 6.2.1 Ensure 'DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+65. 6.2.2 Ensure 'EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+66. 6.2.3 Ensure 'IMP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+67. 6.2.4 Ensure 'DATAPUMP_EXP_FULL_DATABASE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_EXP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_EXP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+68. 6.2.5 Ensure 'DATAPUMP_IMP_FULL_DATABASE' is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DATAPUMP_IMP_FULL_DATABASE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DATAPUMP_IMP_FULL_DATABASE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+69. 6.2.6 Ensure 'DV_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('DV_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+70. 6.2.7 Ensure 'DV_AUDIT_CLEANUP' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_AUDIT_CLEANUP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_AUDIT_CLEANUP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+71. 6.2.8 Ensure 'OLAP_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('OLAP_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('OLAP_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+72. 6.2.9 Ensure 'LBAC_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LBAC_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('LBAC_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+73. 6.2.10 Ensure 'JAVA_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVA_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('JAVA_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+74. 6.2.11 Ensure 'JAVASYSPRIVS' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVAUSERPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVAUSERPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+75. 6.2.12 Ensure 'LOGSTDBY_ADMINISTRATOR' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('LOGSTDBY_ADMINISTRATOR')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('LOGSTDBY_ADMINISTRATOR')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+76. 6.2.13 Ensure 'MAINTPLAN_APP' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('MAINTPLAN_APP')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('MAINTPLAN_APP')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+77. 6.2.14 Ensure 'JAVADEBUGPRIV' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('JAVADEBUGPRIV')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('JAVADEBUGPRIV')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+78. 6.2.15 Ensure 'DV_PATCH_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_PATCH_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_PATCH_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+79. 6.2.16 Ensure 'DV_POLICY_OWNER' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('DV_POLICY_OWNER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('DV_POLICY_OWNER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+80. 6.2.17 Ensure AUDIT_ADMIN' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_ADMIN')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('AUDIT_ADMIN')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+81. 6.2.18 Ensure 'AUDIT_VIEWER' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('AUDIT_VIEWER')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('AUDIT_VIEWER')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+82. 6.2.19 Ensure 'PDB_DBA' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+Run the following query to check for unauthorized grants:
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('PDB_DBA')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN ('PDB_DBA')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+83. 6.2.20 Ensure 'SELECT_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('SELECT_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('SELECT_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+84. 6.2.21 Ensure 'EXECUTE_CATALOG_ROLE' Is Revoked From Unauthorized 'GRANTEE' (Automated)
+------------------------------------------------------------------------------------------
+This query will also give you the name of the CDB/PDB that has the issue. To assess
+this recommendation, execute the following SQL statement.
+WITH GRANTEES_NOT_ORACLEMAINTAINED AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, ROLE AS
+GRANTEE FROM CDB_ROLES WHERE ORACLE_MAINTAINED = 'N'
+    UNION
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, USERNAME AS
+GRANTEE FROM CDB_USERS WHERE ORACLE_MAINTAINED = 'N'
+),
+DIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Direct Grant' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    WHERE GRANTED_ROLE IN ('EXECUTE_CATALOG_ROLE')
+),
+INDIRECT_PRIVS AS (
+    SELECT DISTINCT CON_ID_TO_CON_NAME(CON_ID) AS CONTAINERNAME, GRANTEE,
+GRANTED_ROLE AS GRANTED_PRIVILEGE, 'Privileges Through Role' AS HOW_GRANTED
+    FROM CDB_ROLE_PRIVS
+    START WITH GRANTED_ROLE IN ( SELECT DISTINCT P.GRANTEE FROM
+SYS.CDB_ROLE_PRIVS P, SYS.CDB_ROLES R WHERE P.GRANTED_ROLE IN
+('EXECUTE_CATALOG_ROLE')
+    AND P.GRANTEE = R.ROLE) CONNECT BY PRIOR GRANTEE = GRANTED_ROLE
+)
+SELECT CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE, HOW_GRANTED
+FROM (
+    SELECT * FROM DIRECT_PRIVS
+    UNION
+    SELECT * FROM INDIRECT_PRIVS
+) COMBINED_PRIVS
+WHERE
+    GRANTEE IN (SELECT GRANTEE FROM GRANTEES_NOT_ORACLEMAINTAINED)
+ORDER BY CONTAINERNAME, GRANTEE, GRANTED_PRIVILEGE;
+Lack of results implies compliance.
+
+==========================================================================================
+
+85. 6.3.1 Ensure 'ALL' Is Revoked On 'Sensitive' Tables (Automated)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(c.con_id) AS containername, c.*
+FROM CDB_TAB_PRIVS c
+WHERE c.owner='SYS' AND c.table_name IN
+('CDB_LOCAL_ADMINAUTH$','DEFAULT_PWD$','ENC$','HISTGRM$','HIST_HEAD$','LINK$'
+,'PDB_SYNC$','SCHEDULER$_CREDENTIAL','USER$','USER_HISTORY$','XS$VERIFIERS');
+If any sensitive tables have users, who do NOT have an accepted business need, with
+ALL privileges, this is a fail.
+
+==========================================================================================
+
+86. 6.5.1 Ensure 'DBA_COL_PRIVS' Is Revoked From Unauthorized 'GRANTEE' (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_COL_PRIVS C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+AND O.OBJECT_NAME=C.TABLE_NAME AND O.ORACLE_MAINTAINED='N';
+If any unauthorized users are granted DBA_COL_PRIVS, this is a fail.
+
+==========================================================================================
+
+87. 6.6.1 Ensure Proxy User Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME,J.* FROM CDB_PROXIES J
+If any unauthorized users are granted proxy user privileges, this is a fail.
+
+==========================================================================================
+
+88. 6.7.1 Ensure Custom Java Privileges Are Revoked From Unauthorized 'GRANTEE' (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(J.CON_ID) AS CONTAINERNAME, 'CUSTOM JAVA PRIVILEGE'
+AS "JAVA PRIVILEGE", J.*
+FROM  CDB_JAVA_POLICY J
+WHERE DBMS_UTILITY.GET_HASH_VALUE(
+   (KIND||GRANTEE||TYPE_SCHEMA||TYPE_NAME||NAME||ACTION||ENABLED), 2,
+2010304050)
+    NOT IN ( 800515347, 151129288, 976537527, 30494973, 1937158100,
+364905785, 1985378421,
+    1309631600, 1029870508, 1546167066, 184142192, 859260823,  1514899866,
+1402070492,
+    470712301, 856789430, 152768586, 1516266150, 742382950, 835887237,
+27519048,  127800042,
+    585523424, 116384647, 595031329, 519425340, 565011516, 104142482,
+365736720, 105705833,
+    382398907, 71790781, 62579200, 202664153, 1299118788, 105413428,
+545541759, 1119910297,
+    1712531359,  950804353, 809152653, 63495589, 1621785741, 888624743,
+1298694530, 1094834124,
+    1254650837, 1289482879,  236689110, 449271147, 356128445, 1546786406,
+374027524, 1161638561,
+    1892729955, 972739099, 539210486,  1634287789, 2000803097, 741404310,
+1879138467, 623589740,
+    498687020, 782135231, 1194762317, 884905623,  1896250536, 970596985,
+1082897628, 448525273,
+    1242306455, 23750295, 1550194092, 1772592918, 1603737720,  142136119,
+289269359, 1315794462,
+    96990011, 1095201623, 20727542, 1973515175, 540292561, 343336248,
+179666672, 9440468,
+    1825382930, 1855646886, 598800695, 631787483, 1467839181, 665909584,
+1461437618, 1030723320,
+    311348090, 1398805244, 179119810, 72116459, 1979563728, 57733337,
+54818063, 1367689664,
+    1508476194, 1523274446, 313964240, 1328352206, 689371984, 1299489851,
+121628881, 696051281,
+    1374172231,  42876420, 1612485481, 1577690416, 551128519, 1695954190,
+826909143, 983212206,
+    1658826990, 1414117567,  980793982, 742010474, 230612329, 245501173,
+424452954, 1700638178,
+    1789496901, 1202501131, 1731444159,  335317020, 253453448, 1936475065,
+777837297, 462854008,
+    368852509, 129848269, 549321505, 301832111, 1323272794,  92418107,
+715497686, 1854322866,
+    1423215774, 1973681135, 375128879, 553190962, 907068071, 638021877,
+1788624774, 1662401506,
+    1362996185, 478866415, 1598256716, 1469155910, 334914317, 870540049,
+768584438,  1885395547,
+    755918725, 350200414, 134114043, 43446111, 486709639, 83488831,
+139365274, 1260703408,
+    467391551,  701952766, 230475370, 736630396, 112581665, 376052929,
+471626899, 542637624,
+    680632989, 1103049052, 1347282494,  1559487896, 1592685230, 1654109637,
+1735090119,
+    1831375678, 1886462769, 1912735089, 1959933679,  1234282401, 1772747954,
+1514447620,
+    201492720, 167207852, 434486659, 1169110020, 1649953039, 2008561561,
+1333987409, 1192825952,
+    1740977823, 1501827236, 934263545, 1081144386, 310891775, 1279875884,
+1539747260,
+    1630393794, 1764828081, 336339792, 503085247, 639778710, 764636870,
+919569250, 993349195,
+    124317783, 426721579, 632709131, 703662335, 866241111, 1367484647,
+1523591677, 1902848780);
+If any unauthorized users are granted Java privileges, this is a fail.
+
+==========================================================================================
+
+89. 6.8.1 Ensure Directory Object Access Is Revoked From Unauthorized 'GRANTEE' (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+C.OWNER,
+       C.DIRECTORY_NAME, C.DIRECTORY_PATH
+FROM CDB_DIRECTORIES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.DIRECTORY_NAME
+     AND OBJECT_TYPE='DIRECTORY';
+If any unauthorized users are granted directory object access, this is a fail.
+Note: The flag oracle_maintained='N' indicates whether the directory object was
+created by Oracle or someone else.
+
+==========================================================================================
+
+90. 6.8.2 Review Directory Objects Privileges (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(D.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       D.DIRECTORY_NAME,D.DIRECTORY_PATH,
+       T.GRANTEE, T.GRANTOR, T.PRIVILEGE, T.GRANTABLE, T.HIERARCHY, T.COMMON,
+T.INHERITED,
+       D.CON_ID
+       --T.GRANTEE, T.PRIVILEGE, T.GRANTABLE
+FROM CDB_DIRECTORIES D
+LEFT JOIN CDB_TAB_PRIVS T ON D.CON_ID = T.CON_ID AND D.OWNER=T.OWNER AND
+     D.DIRECTORY_NAME=T.TABLE_NAME AND T.TYPE='DIRECTORY'
+JOIN CDB_OBJECTS O ON D.CON_ID = O.CON_ID AND D.OWNER=O.OWNER AND
+O.OBJECT_NAME=D.DIRECTORY_NAME
+     AND O.OBJECT_TYPE='DIRECTORY';
+The flag oracle_maintained='N' indicates whether the directory object was created
+by Oracle or someone else.
+The non-Oracle objects should be checked carefully for possible problems.
+
+==========================================================================================
+
+91. 6.8.3 Review External Tables With Preprocessor (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED,
+       REGEXP_SUBSTR(SUBSTR(ACCESS_PARAMETERS, INSTR(ACCESS_PARAMETERS,
+'PREPROCESSOR ')),
+       '''(.**)''', 1, 1, NULL, 1) AS FILENAME, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER AND
+O.OBJECT_NAME=C.TABLE_NAME AND
+     O.OBJECT_TYPE='TABLE';
+The flag oracle_maintained='N' indicates whether the directory object was created
+by Oracle or someone else.
+The non-Oracle objects should be checked carefully for possible problems.
+
+==========================================================================================
+
+92. 6.8.4 Review External Tables (Manual)
+------------------------------------------------------------------------------------------
+To assess this recommendation, execute the following SQL statement.
+SELECT CON_ID_TO_CON_NAME(C.CON_ID) AS CONTAINERNAME,O.ORACLE_MAINTAINED, C.*
+FROM CDB_EXTERNAL_TABLES C
+JOIN CDB_OBJECTS O
+     ON C.CON_ID = O.CON_ID AND C.OWNER=O.OWNER
+     AND O.OBJECT_NAME=C.TABLE_NAME
+     AND O.OBJECT_TYPE='TABLE';
+The flag oracle_maintained='N' indicates whether the directory object was created
+by Oracle or someone else.
+The non-Oracle objects should be checked carefully for possible problems.
+
+==========================================================================================
+
