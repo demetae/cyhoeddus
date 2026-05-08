@@ -27,8 +27,8 @@ class ControlBlock:
     explanation: str = ""
     remediation: str = ""
 
-HEADER_FILL = PatternFill("solid", fgColor="D9D9A6")  
-TEST_FILL = PatternFill("solid", fgColor="F4B183")    
+HEADER_FILL = PatternFill("solid", fgColor="D9D9A6")  # muted khaki like the screenshot
+TEST_FILL = PatternFill("solid", fgColor="F4B183")    # orange highlight
 SECTION_FILL = PatternFill("solid", fgColor="DDEBF7")
 BORDER = Border(
     left=Side(style="thin", color="777777"),
