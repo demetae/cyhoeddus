@@ -27,8 +27,8 @@ class ControlBlock:
     explanation: str = ""
     remediation: str = ""
 
-HEADER_FILL = PatternFill("solid", fgColor="D9D9A6")  
-TEST_FILL = PatternFill("solid", fgColor="F4B183")    
+HEADER_FILL = PatternFill("solid", fgColor="D9D9A6")  # muted khaki like the screenshot
+TEST_FILL = PatternFill("solid", fgColor="F4B183")    # orange highlight
 SECTION_FILL = PatternFill("solid", fgColor="DDEBF7")
 BORDER = Border(
     left=Side(style="thin", color="777777"),
@@ -337,7 +337,8 @@ def write_appendix_workbook(
             if control.finding_count:
                 ws.cell(row=row, column=1, value=f"{control.finding_count} row(s) selected.")
                 row += 1
-            caption = f"Figure {figure_no}: Output returned for {control.control_id} - {re.sub(r'\\s*\\((Automated|Manual)\\)\\s*$', '', control.title, flags=re.I)}."
+            clean_title = re.sub(r"\s*\((Automated|Manual)\)\s*$", "", control.title, flags=re.I)
+            caption = f"Figure {figure_no}: Output returned for {control.control_id} - {clean_title}."
             write_wrapped_cell(ws, row, 1, caption, bold=False)
             ws.cell(row=row, column=1).font = Font(italic=True)
             figure_no += 1
