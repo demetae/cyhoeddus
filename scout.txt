@@ -1,308 +1,155 @@
-# Invoke-ScoutPerService.ps1
-#
-# Runs ScoutSuite against AWS one service at a time.
-# Each service receives a separate report directory and log files.
-#
-# Run this script from the PowerShell session where HTTPS_PROXY is
-# already configured correctly.
+[CmdletBinding()]
+param(
+    # When this script is stored in the ScoutSuite virtual-environment folder,
+    # the default resolves to .\Scripts\scout.exe
+    [string] $ScoutExe = (Join-Path $PSScriptRoot 'Scripts\scout.exe'),
 
+    # Optional AWS CLI / boto3 profile name.
+    [string] $AwsProfile
+)
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# -------------------------------------------------------------------
-# Configuration
-# -------------------------------------------------------------------
-
-$ScoutExe = '.\Scripts\scout.exe'
-
-# Restrict the scan to the authorised regions.
-$Regions = @(
-    'eu-west-2'
-    'eu-central-1'
-)
-
-# These services were blocked by SCP restrictions in the previous run.
-$ExcludedServices = @(
-    'cloudfront'
-    'directconnect'
-)
-
-# Stop an individual service scan after this many minutes and continue.
-# Set to 0 to disable the timeout.
-$PerServiceTimeoutMinutes = 45
-
-# Stack traces can help diagnose services that fail.
-$EnableDebug = $false
-
-# Leave empty to discover all supported services automatically.
-# To scan only selected services, add them here, for example:
-#
-# $ServicesOverride = @('iam', 's3', 'ec2')
-#
-$ServicesOverride = @()
-
-# -------------------------------------------------------------------
-# Collect AWS credentials without putting them in PowerShell history
-# -------------------------------------------------------------------
-
-function ConvertFrom-SecureStringPlainText {
+function ConvertTo-NativeArgument {
     param(
         [Parameter(Mandatory)]
-        [Security.SecureString] $SecureValue
+        [AllowEmptyString()]
+        [string] $Argument
     )
 
-    $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+    # Safely quote arguments for ProcessStartInfo.Arguments.
+    # This supports Windows PowerShell 5.1 as well as PowerShell 7.
+    if ($Argument.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+
+    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+
+    return '"' + $escaped + '"'
+}
+
+function Invoke-NativeProcess {
+    param(
+        [Parameter(Mandatory)]
+        [string] $FilePath,
+
+        [Parameter()]
+        [string[]] $Arguments = @()
+    )
+
+    if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
+        throw "Executable not found: $FilePath"
+    }
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = (Resolve-Path -LiteralPath $FilePath).Path
+    $startInfo.Arguments = (
+        $Arguments |
+            ForEach-Object { ConvertTo-NativeArgument -Argument $_ }
+    ) -join ' '
+
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
 
     try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
+        if (-not $process.Start()) {
+            throw "Failed to start native process: $FilePath"
+        }
+
+        # Start reading both streams before waiting for the process.
+        # This avoids deadlocks when either buffer fills up.
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $process.WaitForExit()
+
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdOut   = $stdout
+            StdErr   = $stderr
+        }
     }
     finally {
-        if ($Ptr -ne [IntPtr]::Zero) {
-            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
+        $process.Dispose()
+    }
+}
+
+Write-Host 'Discovering supported ScoutSuite services...'
+
+$scoutArguments = @('aws')
+
+if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
+    $scoutArguments += @('--profile', $AwsProfile)
+}
+
+$scoutArguments += '--list-services'
+
+$result = Invoke-NativeProcess `
+    -FilePath $ScoutExe `
+    -Arguments $scoutArguments
+
+# ScoutSuite may write normal informational logs to stderr.
+# Display them without turning them into PowerShell errors.
+if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
+    foreach ($line in ($result.StdErr -split "\r?\n")) {
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            Write-Host "[ScoutSuite] $line" -ForegroundColor DarkGray
         }
     }
 }
 
-$AccessKeyId = Read-Host 'AWS access key ID'
+if ($result.ExitCode -ne 0) {
+    $details = $result.StdErr.Trim()
 
-$SecretAccessKeySecure = Read-Host `
-    'AWS secret access key' `
-    -AsSecureString
-
-$SessionTokenSecure = Read-Host `
-    'AWS session token' `
-    -AsSecureString
-
-$SecretAccessKey = ConvertFrom-SecureStringPlainText $SecretAccessKeySecure
-$SessionToken    = ConvertFrom-SecureStringPlainText $SessionTokenSecure
-
-# -------------------------------------------------------------------
-# Prepare output directory
-# -------------------------------------------------------------------
-
-$Timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$RootDir   = Join-Path `
-    (Get-Location) `
-    "scoutsuite-per-service-$Timestamp"
-
-New-Item `
-    -ItemType Directory `
-    -Path $RootDir `
-    -Force |
-    Out-Null
-
-$SummaryFile = Join-Path $RootDir 'summary.csv'
-
-Write-Host ''
-Write-Host 'ScoutSuite per-service scan'
-Write-Host "Output directory: $RootDir"
-Write-Host ''
-
-# -------------------------------------------------------------------
-# Discover supported services
-# -------------------------------------------------------------------
-
-if ($ServicesOverride.Count -gt 0) {
-    $Services = $ServicesOverride
-}
-else {
-    Write-Host 'Discovering supported ScoutSuite services...'
-
-    $ListOutput = (
-        & $ScoutExe aws --list-services 2>&1 |
-        Out-String
-    )
-
-    # Remove ANSI terminal colour sequences if present.
-    $ListOutput = $ListOutput -replace "`e\[[\d;]*m", ''
-
-    # ScoutSuite normally outputs quoted service names.
-    $Services = [regex]::Matches(
-        $ListOutput,
-        '"([^"]+)"'
-    ) |
-        ForEach-Object {
-            $_.Groups[1].Value.Trim()
-        } |
-        Where-Object {
-            $_ -and $_ -notin $ExcludedServices
-        } |
-        Sort-Object -Unique
-
-    if (-not $Services -or $Services.Count -eq 0) {
-        Write-Host ''
-        Write-Host 'Output returned by ScoutSuite:'
-        Write-Host $ListOutput
-
-        throw @'
-Could not parse the list of services.
-
-Run:
-  .\Scripts\scout.exe aws --list-services
-
-Then copy the required names into the $ServicesOverride array near the
-top of this script.
-'@
+    if ([string]::IsNullOrWhiteSpace($details)) {
+        $details = $result.StdOut.Trim()
     }
+
+    throw @"
+ScoutSuite service discovery failed.
+Executable: $ScoutExe
+Exit code:  $($result.ExitCode)
+
+$details
+"@
 }
 
-Write-Host "Services to scan: $($Services.Count)"
-Write-Host ($Services -join ', ')
-Write-Host ''
+$SupportedServices = @(
+    $result.StdOut -split "\r?\n" |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+)
 
-Write-Host 'Excluded services:'
-Write-Host ($ExcludedServices -join ', ')
-Write-Host ''
+if ($SupportedServices.Count -eq 0) {
+    throw @"
+ScoutSuite completed successfully but returned no services on stdout.
 
-# -------------------------------------------------------------------
-# Scan one service at a time
-# -------------------------------------------------------------------
-
-$Results = [System.Collections.Generic.List[object]]::new()
-
-foreach ($Service in $Services) {
-    $ServiceDir = Join-Path $RootDir $Service
-
-    New-Item `
-        -ItemType Directory `
-        -Path $ServiceDir `
-        -Force |
-        Out-Null
-
-    $StdOutLog = Join-Path $ServiceDir 'stdout.log'
-    $StdErrLog = Join-Path $ServiceDir 'stderr.log'
-    $ReportName = "aws-$Service"
-
-    $Arguments = @(
-        'aws'
-        '--access-keys'
-        '--access-key-id'
-        $AccessKeyId
-        '--secret-access-key'
-        $SecretAccessKey
-        '--session-token'
-        $SessionToken
-        '--regions'
-    )
-
-    $Arguments += $Regions
-
-    $Arguments += @(
-        '--services'
-        $Service
-        '--report-dir'
-        $ServiceDir
-        '--report-name'
-        $ReportName
-        '--no-browser'
-        '--force'
-    )
-
-    if ($EnableDebug) {
-        $Arguments += '--debug'
-    }
-
-    $StartTime = Get-Date
-
-    Write-Host ''
-    Write-Host ('=' * 72)
-    Write-Host "Starting service: $Service"
-    Write-Host "Started:          $StartTime"
-    Write-Host "Report folder:    $ServiceDir"
-    Write-Host "Standard output:  $StdOutLog"
-    Write-Host "Error output:     $StdErrLog"
-    Write-Host ('=' * 72)
-
-    $Process = Start-Process `
-        -FilePath $ScoutExe `
-        -ArgumentList $Arguments `
-        -RedirectStandardOutput $StdOutLog `
-        -RedirectStandardError $StdErrLog `
-        -NoNewWindow `
-        -PassThru
-
-    $TimedOut = $false
-
-    if ($PerServiceTimeoutMinutes -gt 0) {
-        Wait-Process `
-            -Id $Process.Id `
-            -Timeout ($PerServiceTimeoutMinutes * 60) `
-            -ErrorAction SilentlyContinue
-
-        $Process.Refresh()
-
-        if (-not $Process.HasExited) {
-            $TimedOut = $true
-
-            Write-Host ''
-            Write-Host "Timeout reached for service: $Service"
-            Write-Host "Stopping process ID: $($Process.Id)"
-
-            Stop-Process `
-                -Id $Process.Id `
-                -Force `
-                -ErrorAction SilentlyContinue
-        }
-    }
-    else {
-        Wait-Process -Id $Process.Id
-    }
-
-    $EndTime  = Get-Date
-    $Duration = $EndTime - $StartTime
-
-    $ExitCode = $null
-
-    if (-not $TimedOut) {
-        $Process.Refresh()
-        $ExitCode = $Process.ExitCode
-    }
-
-    $Status = if ($TimedOut) {
-        'TimedOut'
-    }
-    elseif ($ExitCode -eq 0) {
-        'Completed'
-    }
-    else {
-        'CompletedWithErrors'
-    }
-
-    $Results.Add(
-        [PSCustomObject]@{
-            Service         = $Service
-            Status          = $Status
-            ExitCode        = $ExitCode
-            Started         = $StartTime
-            Finished        = $EndTime
-            DurationMinutes = [Math]::Round(
-                $Duration.TotalMinutes,
-                2
-            )
-            ReportDirectory = $ServiceDir
-            StandardOutput  = $StdOutLog
-            ErrorOutput     = $StdErrLog
-        }
-    )
-
-    # Preserve partial progress after every service.
-    $Results |
-        Export-Csv `
-            -Path $SummaryFile `
-            -NoTypeInformation `
-            -Force
-
-    Write-Host ''
-    Write-Host "Finished service: $Service"
-    Write-Host "Status:           $Status"
-    Write-Host "Duration:         $([Math]::Round($Duration.TotalMinutes, 2)) minutes"
+ScoutSuite stderr:
+$($result.StdErr.Trim())
+"@
 }
 
-# Remove plaintext credential variables when the scan finishes.
-Remove-Variable SecretAccessKey -ErrorAction SilentlyContinue
-Remove-Variable SessionToken    -ErrorAction SilentlyContinue
-
 Write-Host ''
-Write-Host ('=' * 72)
-Write-Host 'All requested service scans have finished.'
-Write-Host "Summary file: $SummaryFile"
-Write-Host ('=' * 72)
+Write-Host "ScoutSuite reported $($SupportedServices.Count) supported service entries:"
+Write-Host ''
+
+$SupportedServices | ForEach-Object {
+    Write-Host "  $_"
+}
+
+# Leave the discovered values available to calling code.
+return $SupportedServices
