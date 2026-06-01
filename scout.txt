@@ -1,15 +1,33 @@
 [CmdletBinding()]
 param(
-    # When this script is stored in the ScoutSuite virtual-environment folder,
-    # the default resolves to .\Scripts\scout.exe
     [string] $ScoutExe = (Join-Path $PSScriptRoot 'Scripts\scout.exe'),
 
-    # Optional AWS CLI / boto3 profile name.
-    [string] $AwsProfile
+    # Use this instead of entering access keys manually when a configured
+    # AWS profile is available.
+    [string] $AwsProfile,
+
+    # Prompt securely for AWS credentials at runtime.
+    [switch] $PromptForAwsCredentials
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function ConvertFrom-SecureValue {
+    param(
+        [Parameter(Mandatory)]
+        [Security.SecureString] $SecureValue
+    )
+
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+    }
+}
 
 function ConvertTo-NativeArgument {
     param(
@@ -18,8 +36,6 @@ function ConvertTo-NativeArgument {
         [string] $Argument
     )
 
-    # Safely quote arguments for ProcessStartInfo.Arguments.
-    # This supports Windows PowerShell 5.1 as well as PowerShell 7.
     if ($Argument.Length -eq 0) {
         return '""'
     }
@@ -39,8 +55,9 @@ function Invoke-NativeProcess {
         [Parameter(Mandatory)]
         [string] $FilePath,
 
-        [Parameter()]
-        [string[]] $Arguments = @()
+        [string[]] $Arguments = @(),
+
+        [hashtable] $EnvironmentVariables = @{}
     )
 
     if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
@@ -59,6 +76,15 @@ function Invoke-NativeProcess {
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
 
+    foreach ($name in $EnvironmentVariables.Keys) {
+        if ([string]::IsNullOrEmpty($EnvironmentVariables[$name])) {
+            $startInfo.EnvironmentVariables.Remove($name)
+        }
+        else {
+            $startInfo.EnvironmentVariables[$name] = $EnvironmentVariables[$name]
+        }
+    }
+
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
 
@@ -67,20 +93,16 @@ function Invoke-NativeProcess {
             throw "Failed to start native process: $FilePath"
         }
 
-        # Start reading both streams before waiting for the process.
-        # This avoids deadlocks when either buffer fills up.
+        # Read both streams asynchronously to avoid deadlocks.
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
 
         $process.WaitForExit()
 
-        $stdout = $stdoutTask.GetAwaiter().GetResult()
-        $stderr = $stderrTask.GetAwaiter().GetResult()
-
         return [pscustomobject]@{
             ExitCode = $process.ExitCode
-            StdOut   = $stdout
-            StdErr   = $stderr
+            StdOut   = $stdoutTask.GetAwaiter().GetResult()
+            StdErr   = $stderrTask.GetAwaiter().GetResult()
         }
     }
     finally {
@@ -88,6 +110,55 @@ function Invoke-NativeProcess {
     }
 }
 
+if ($AwsProfile -and $PromptForAwsCredentials) {
+    throw 'Choose either -AwsProfile or -PromptForAwsCredentials, not both.'
+}
+
+$scoutEnvironment = @{}
+
+if ($PromptForAwsCredentials) {
+    Write-Host ''
+    Write-Host 'Enter AWS credentials for this ScoutSuite run.'
+    Write-Host 'The secret values will not be displayed or stored in command history.'
+    Write-Host ''
+
+    $accessKeyId = Read-Host 'AWS access key ID'
+
+    if ([string]::IsNullOrWhiteSpace($accessKeyId)) {
+        throw 'AWS access key ID cannot be blank.'
+    }
+
+    $secretAccessKeySecure = Read-Host `
+        'AWS secret access key' `
+        -AsSecureString
+
+    $sessionTokenSecure = Read-Host `
+        'AWS session token - press Enter if your credentials do not use one' `
+        -AsSecureString
+
+    $secretAccessKey = ConvertFrom-SecureValue $secretAccessKeySecure
+    $sessionToken = ConvertFrom-SecureValue $sessionTokenSecure
+
+    if ([string]::IsNullOrWhiteSpace($secretAccessKey)) {
+        throw 'AWS secret access key cannot be blank.'
+    }
+
+    $scoutEnvironment['AWS_ACCESS_KEY_ID'] = $accessKeyId
+    $scoutEnvironment['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey
+
+    if ([string]::IsNullOrWhiteSpace($sessionToken)) {
+        # Explicitly remove an inherited token so it cannot conflict with
+        # long-lived access keys.
+        $scoutEnvironment['AWS_SESSION_TOKEN'] = ''
+        $scoutEnvironment['AWS_SECURITY_TOKEN'] = ''
+    }
+    else {
+        $scoutEnvironment['AWS_SESSION_TOKEN'] = $sessionToken
+        $scoutEnvironment['AWS_SECURITY_TOKEN'] = $sessionToken
+    }
+}
+
+Write-Host ''
 Write-Host 'Discovering supported ScoutSuite services...'
 
 $scoutArguments = @('aws')
@@ -98,12 +169,31 @@ if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
 
 $scoutArguments += '--list-services'
 
-$result = Invoke-NativeProcess `
-    -FilePath $ScoutExe `
-    -Arguments $scoutArguments
+try {
+    $result = Invoke-NativeProcess `
+        -FilePath $ScoutExe `
+        -Arguments $scoutArguments `
+        -EnvironmentVariables $scoutEnvironment
+}
+finally {
+    # Remove plaintext credential values from this script's variables as soon
+    # as the child process has finished.
+    if (Get-Variable accessKeyId -ErrorAction SilentlyContinue) {
+        $accessKeyId = $null
+    }
 
-# ScoutSuite may write normal informational logs to stderr.
-# Display them without turning them into PowerShell errors.
+    if (Get-Variable secretAccessKey -ErrorAction SilentlyContinue) {
+        $secretAccessKey = $null
+    }
+
+    if (Get-Variable sessionToken -ErrorAction SilentlyContinue) {
+        $sessionToken = $null
+    }
+
+    $scoutEnvironment.Clear()
+}
+
+# ScoutSuite writes normal log output to stderr.
 if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
     foreach ($line in ($result.StdErr -split "\r?\n")) {
         if (-not [string]::IsNullOrWhiteSpace($line)) {
@@ -128,13 +218,13 @@ $details
 "@
 }
 
-$SupportedServices = @(
+$supportedServices = @(
     $result.StdOut -split "\r?\n" |
         ForEach-Object { $_.Trim() } |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 )
 
-if ($SupportedServices.Count -eq 0) {
+if ($supportedServices.Count -eq 0) {
     throw @"
 ScoutSuite completed successfully but returned no services on stdout.
 
@@ -144,12 +234,11 @@ $($result.StdErr.Trim())
 }
 
 Write-Host ''
-Write-Host "ScoutSuite reported $($SupportedServices.Count) supported service entries:"
+Write-Host "ScoutSuite reported $($supportedServices.Count) supported service entries:"
 Write-Host ''
 
-$SupportedServices | ForEach-Object {
+$supportedServices | ForEach-Object {
     Write-Host "  $_"
 }
 
-# Leave the discovered values available to calling code.
-return $SupportedServices
+return $supportedServices
