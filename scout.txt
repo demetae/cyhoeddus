@@ -6,11 +6,38 @@ param(
     [string] $AwsProfile,
 
     # Prompt securely for AWS credentials each time the script runs.
-    [switch] $PromptForAwsCredentials
+    [switch] $PromptForAwsCredentials,
+
+    # Only scan these authorised AWS regions.
+    [string[]] $Regions = @(
+        'eu-west-2',
+        'eu-central-1'
+    ),
+
+    # Known SCP-blocked services from the earlier ScoutSuite run.
+    [string[]] $ExcludedServices = @(
+        'cloudfront',
+        'directconnect'
+    ),
+
+    # Optionally scan only specified services.
+    # Leave empty to discover and scan all supported services.
+    [string[]] $Services,
+
+    # Stop a single service scan if it runs for too long.
+    # Set to 0 to disable the timeout.
+    [int] $PerServiceTimeoutMinutes = 45,
+
+    # Include ScoutSuite stack traces in the logs.
+    [switch] $DebugLogging
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# -------------------------------------------------------------------
+# Helper functions
+# -------------------------------------------------------------------
 
 function ConvertFrom-SecureValue {
     param(
@@ -28,7 +55,9 @@ function ConvertFrom-SecureValue {
         )
     }
     finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+        if ($pointer -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+        }
     }
 }
 
@@ -69,7 +98,9 @@ function Invoke-NativeProcess {
 
         [string[]] $Arguments = @(),
 
-        [hashtable] $EnvironmentVariables = @{}
+        [hashtable] $EnvironmentVariables = @{},
+
+        [int] $TimeoutSeconds = 0
     )
 
     if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
@@ -94,6 +125,8 @@ function Invoke-NativeProcess {
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
 
+    # Existing environment variables, including HTTPS_PROXY, are inherited.
+    # Add or remove only the values explicitly supplied here.
     foreach ($name in $EnvironmentVariables.Keys) {
         $value = $EnvironmentVariables[$name]
 
@@ -117,10 +150,33 @@ function Invoke-NativeProcess {
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
 
-        $process.WaitForExit()
+        $timedOut = $false
+
+        if ($TimeoutSeconds -gt 0) {
+            $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+
+            if (-not $completed) {
+                $timedOut = $true
+
+                try {
+                    # Supported by newer .NET runtimes.
+                    $process.Kill($true)
+                }
+                catch {
+                    # Fallback for Windows PowerShell 5.1.
+                    $process.Kill()
+                }
+
+                $process.WaitForExit()
+            }
+        }
+        else {
+            $process.WaitForExit()
+        }
 
         return [pscustomobject]@{
-            ExitCode = $process.ExitCode
+            ExitCode = if ($timedOut) { $null } else { $process.ExitCode }
+            TimedOut = $timedOut
             StdOut   = $stdoutTask.GetAwaiter().GetResult()
             StdErr   = $stderrTask.GetAwaiter().GetResult()
         }
@@ -157,17 +213,12 @@ $marker
         $markerIndex + $marker.Length
     )
 
-    # ScoutSuite emits a quoted comma-separated list rather than a JSON array:
-    #
-    # "acm", "awslambda", "cloudformation", ...
-    #
-    # Extract each quoted service name directly.
     $matches = [regex]::Matches(
         $serviceText,
         '"([^"]+)"'
     )
 
-    $services = @(
+    $servicesFound = @(
         foreach ($match in $matches) {
             $service = $match.Groups[1].Value.Trim()
 
@@ -180,7 +231,7 @@ $marker
         }
     )
 
-    if ($services.Count -eq 0) {
+    if ($servicesFound.Count -eq 0) {
         throw @"
 ScoutSuite completed successfully, but no quoted service names could be
 extracted from its output.
@@ -190,14 +241,30 @@ $serviceText
 "@
     }
 
-    return $services
+    return $servicesFound | Sort-Object -Unique
 }
+
+# -------------------------------------------------------------------
+# Validate arguments
+# -------------------------------------------------------------------
 
 if ($AwsProfile -and $PromptForAwsCredentials) {
     throw 'Choose either -AwsProfile or -PromptForAwsCredentials, not both.'
 }
 
+if (-not (Test-Path -LiteralPath $ScoutExe -PathType Leaf)) {
+    throw "ScoutSuite executable not found: $ScoutExe"
+}
+
+# -------------------------------------------------------------------
+# Prepare credentials
+# -------------------------------------------------------------------
+
 $scoutEnvironment = @{}
+
+$accessKeyId = $null
+$secretAccessKey = $null
+$sessionToken = $null
 
 if ($PromptForAwsCredentials) {
     Write-Host ''
@@ -243,92 +310,263 @@ if ($PromptForAwsCredentials) {
     }
 }
 
+# -------------------------------------------------------------------
+# Prepare the report directory
+# -------------------------------------------------------------------
+
+$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+$rootDir = Join-Path `
+    (Get-Location) `
+    "scoutsuite-per-service-$timestamp"
+
+New-Item `
+    -ItemType Directory `
+    -Path $rootDir `
+    -Force |
+    Out-Null
+
+$summaryFile = Join-Path $rootDir 'summary.csv'
+
 Write-Host ''
-Write-Host 'Discovering supported ScoutSuite services...'
+Write-Host 'ScoutSuite per-service scan'
+Write-Host "Output directory: $rootDir"
+Write-Host "Regions:          $($Regions -join ', ')"
+Write-Host "Excluded:         $($ExcludedServices -join ', ')"
+Write-Host ''
 
-$scoutArguments = @('aws')
-
-if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
-    $scoutArguments += @(
-        '--profile',
-        $AwsProfile
-    )
-}
-
-$scoutArguments += '--list-services'
+# -------------------------------------------------------------------
+# Discover supported services unless explicitly supplied
+# -------------------------------------------------------------------
 
 try {
-    $result = Invoke-NativeProcess `
-        -FilePath $ScoutExe `
-        -Arguments $scoutArguments `
-        -EnvironmentVariables $scoutEnvironment
-}
-finally {
-    # Clear plaintext credential variables after ScoutSuite exits.
-    if (Get-Variable accessKeyId -ErrorAction SilentlyContinue) {
-        $accessKeyId = $null
-    }
+    if (-not $Services -or $Services.Count -eq 0) {
+        Write-Host 'Discovering supported ScoutSuite services...'
 
-    if (Get-Variable secretAccessKey -ErrorAction SilentlyContinue) {
-        $secretAccessKey = $null
-    }
+        $discoveryArguments = @('aws')
 
-    if (Get-Variable sessionToken -ErrorAction SilentlyContinue) {
-        $sessionToken = $null
-    }
-
-    $scoutEnvironment.Clear()
-}
-
-# ScoutSuite writes normal informational logs to stderr.
-if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
-    foreach ($line in ($result.StdErr -split "\r?\n")) {
-        if (-not [string]::IsNullOrWhiteSpace($line)) {
-            Write-Host "[ScoutSuite] $line" -ForegroundColor DarkGray
+        if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
+            $discoveryArguments += @(
+                '--profile',
+                $AwsProfile
+            )
         }
-    }
-}
 
-# Non-zero exit codes are genuine ScoutSuite failures.
-if ($result.ExitCode -ne 0) {
-    $details = $result.StdErr.Trim()
+        $discoveryArguments += '--list-services'
 
-    if ([string]::IsNullOrWhiteSpace($details)) {
-        $details = $result.StdOut.Trim()
-    }
+        $discoveryResult = Invoke-NativeProcess `
+            -FilePath $ScoutExe `
+            -Arguments $discoveryArguments `
+            -EnvironmentVariables $scoutEnvironment
 
-    throw @"
+        # ScoutSuite writes normal informational logs to stderr.
+        if (-not [string]::IsNullOrWhiteSpace($discoveryResult.StdErr)) {
+            foreach ($line in ($discoveryResult.StdErr -split "\r?\n")) {
+                if (-not [string]::IsNullOrWhiteSpace($line)) {
+                    Write-Host "[ScoutSuite] $line" -ForegroundColor DarkGray
+                }
+            }
+        }
+
+        if ($discoveryResult.ExitCode -ne 0) {
+            $details = $discoveryResult.StdErr.Trim()
+
+            if ([string]::IsNullOrWhiteSpace($details)) {
+                $details = $discoveryResult.StdOut.Trim()
+            }
+
+            throw @"
 ScoutSuite service discovery failed.
 Executable: $ScoutExe
-Exit code:  $($result.ExitCode)
+Exit code:  $($discoveryResult.ExitCode)
 
 $details
 "@
-}
+        }
 
-# Search both streams because ScoutSuite versions may differ in where
-# informational messages are written.
-$combinedOutput = @(
-    $result.StdOut
-    $result.StdErr
-) -join "`n"
+        $combinedOutput = @(
+            $discoveryResult.StdOut
+            $discoveryResult.StdErr
+        ) -join "`n"
 
-$supportedServices = @(
-    Get-ScoutSuiteServiceList -Output $combinedOutput
-)
-
-if ($supportedServices.Count -eq 0) {
-    throw 'ScoutSuite completed successfully but reported no services.'
-}
-
-Write-Host ''
-Write-Host "ScoutSuite reported $($supportedServices.Count) supported services:"
-Write-Host ''
-
-$supportedServices |
-    Sort-Object -Unique |
-    ForEach-Object {
-        Write-Host "  $_"
+        $Services = @(
+            Get-ScoutSuiteServiceList -Output $combinedOutput
+        )
     }
 
-return $supportedServices
+    $Services = @(
+        $Services |
+            Where-Object {
+                $_ -and $_ -notin $ExcludedServices
+            } |
+            Sort-Object -Unique
+    )
+
+    if ($Services.Count -eq 0) {
+        throw 'No ScoutSuite services remain after applying exclusions.'
+    }
+
+    Write-Host ''
+    Write-Host "Services to scan: $($Services.Count)"
+    Write-Host ''
+
+    foreach ($service in $Services) {
+        Write-Host "  $service"
+    }
+
+    # -------------------------------------------------------------------
+    # Scan each service independently
+    # -------------------------------------------------------------------
+
+    $results = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($service in $Services) {
+        $serviceDir = Join-Path $rootDir $service
+
+        New-Item `
+            -ItemType Directory `
+            -Path $serviceDir `
+            -Force |
+            Out-Null
+
+        $stdoutLog = Join-Path $serviceDir 'stdout.log'
+        $stderrLog = Join-Path $serviceDir 'stderr.log'
+        $scoutLog  = Join-Path $serviceDir 'scout.log'
+
+        $reportName = "aws-$service"
+
+        $arguments = @(
+            'aws'
+        )
+
+        if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
+            $arguments += @(
+                '--profile',
+                $AwsProfile
+            )
+        }
+
+        $arguments += @(
+            '--regions'
+        )
+
+        $arguments += $Regions
+
+        $arguments += @(
+            '--services',
+            $service,
+            '--report-dir',
+            $serviceDir,
+            '--report-name',
+            $reportName,
+            '--logfile',
+            $scoutLog,
+            '--no-browser',
+            '--force'
+        )
+
+        if ($DebugLogging) {
+            $arguments += '--debug'
+        }
+
+        $startTime = Get-Date
+
+        Write-Host ''
+        Write-Host ('=' * 72)
+        Write-Host "Starting service: $service"
+        Write-Host "Started:          $startTime"
+        Write-Host "Regions:          $($Regions -join ', ')"
+        Write-Host "Report folder:    $serviceDir"
+        Write-Host "ScoutSuite log:   $scoutLog"
+        Write-Host ('=' * 72)
+
+        $timeoutSeconds = if ($PerServiceTimeoutMinutes -gt 0) {
+            $PerServiceTimeoutMinutes * 60
+        }
+        else {
+            0
+        }
+
+        $scanResult = Invoke-NativeProcess `
+            -FilePath $ScoutExe `
+            -Arguments $arguments `
+            -EnvironmentVariables $scoutEnvironment `
+            -TimeoutSeconds $timeoutSeconds
+
+        Set-Content `
+            -LiteralPath $stdoutLog `
+            -Value $scanResult.StdOut `
+            -Encoding UTF8
+
+        Set-Content `
+            -LiteralPath $stderrLog `
+            -Value $scanResult.StdErr `
+            -Encoding UTF8
+
+        $endTime = Get-Date
+        $duration = $endTime - $startTime
+
+        $status = if ($scanResult.TimedOut) {
+            'TimedOut'
+        }
+        elseif ($scanResult.ExitCode -eq 0) {
+            'Completed'
+        }
+        else {
+            'CompletedWithErrors'
+        }
+
+        $results.Add(
+            [pscustomobject]@{
+                Service         = $service
+                Status          = $status
+                ExitCode        = $scanResult.ExitCode
+                Started         = $startTime
+                Finished        = $endTime
+                DurationMinutes = [Math]::Round(
+                    $duration.TotalMinutes,
+                    2
+                )
+                ReportDirectory = $serviceDir
+                ScoutLog        = $scoutLog
+                StandardOutput  = $stdoutLog
+                StandardError   = $stderrLog
+            }
+        )
+
+        # Update after each service so partial progress is preserved.
+        $results |
+            Export-Csv `
+                -LiteralPath $summaryFile `
+                -NoTypeInformation `
+                -Force
+
+        Write-Host ''
+        Write-Host "Finished service: $service"
+        Write-Host "Status:           $status"
+        Write-Host "Exit code:        $($scanResult.ExitCode)"
+        Write-Host "Duration:         $([Math]::Round($duration.TotalMinutes, 2)) minutes"
+
+        if ($scanResult.TimedOut) {
+            Write-Host `
+                "The scan exceeded $PerServiceTimeoutMinutes minutes and was stopped." `
+                -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host ''
+    Write-Host ('=' * 72)
+    Write-Host 'All requested per-service scans have finished.'
+    Write-Host "Summary file: $summaryFile"
+    Write-Host ('=' * 72)
+}
+finally {
+    # Clear plaintext credential values after all service scans complete.
+    $accessKeyId = $null
+    $secretAccessKey = $null
+    $sessionToken = $null
+
+    if ($scoutEnvironment) {
+        $scoutEnvironment.Clear()
+    }
+}
