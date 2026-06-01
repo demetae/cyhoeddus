@@ -1,13 +1,11 @@
 [CmdletBinding()]
 param(
-    # Default ScoutSuite executable location when this script sits beside
-    # the virtual environment's Scripts folder.
     [string] $ScoutExe = (Join-Path $PSScriptRoot 'Scripts\scout.exe'),
 
-    # Optional alternative to entering credentials manually.
+    # Use a configured AWS profile instead of manually entering keys.
     [string] $AwsProfile,
 
-    # Prompt for AWS credentials each time the script runs.
+    # Prompt for AWS access-key details each time the script runs.
     [switch] $PromptForAwsCredentials
 )
 
@@ -20,10 +18,14 @@ function ConvertFrom-SecureValue {
         [Security.SecureString] $SecureValue
     )
 
-    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR(
+        $SecureValue
+    )
 
     try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+            $pointer
+        )
     }
     finally {
         [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
@@ -45,8 +47,17 @@ function ConvertTo-NativeArgument {
         return $Argument
     }
 
-    $escaped = [regex]::Replace($Argument, '(\\*)"', '$1$1\"')
-    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    $escaped = [regex]::Replace(
+        $Argument,
+        '(\\*)"',
+        '$1$1\"'
+    )
+
+    $escaped = [regex]::Replace(
+        $escaped,
+        '(\\+)$',
+        '$1$1'
+    )
 
     return '"' + $escaped + '"'
 }
@@ -66,10 +77,16 @@ function Invoke-NativeProcess {
     }
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = (Resolve-Path -LiteralPath $FilePath).Path
+
+    $startInfo.FileName = (
+        Resolve-Path -LiteralPath $FilePath
+    ).Path
+
     $startInfo.Arguments = (
         $Arguments |
-            ForEach-Object { ConvertTo-NativeArgument -Argument $_ }
+            ForEach-Object {
+                ConvertTo-NativeArgument -Argument $_
+            }
     ) -join ' '
 
     $startInfo.UseShellExecute = $false
@@ -96,7 +113,7 @@ function Invoke-NativeProcess {
             throw "Failed to start native process: $FilePath"
         }
 
-        # Read stdout and stderr concurrently to avoid deadlocks.
+        # Read both streams concurrently to avoid buffer deadlocks.
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
 
@@ -110,6 +127,74 @@ function Invoke-NativeProcess {
     }
     finally {
         $process.Dispose()
+    }
+}
+
+function Get-ScoutSuiteServiceList {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Output
+    )
+
+    $marker = 'The available services are:'
+    $markerIndex = $Output.IndexOf(
+        $marker,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+
+    if ($markerIndex -lt 0) {
+        throw @"
+ScoutSuite completed successfully, but the expected service-list marker was
+not found in its output.
+
+Expected marker:
+$marker
+"@
+    }
+
+    $searchStart = $markerIndex + $marker.Length
+
+    $openBracketIndex = $Output.IndexOf(
+        '[',
+        $searchStart
+    )
+
+    if ($openBracketIndex -lt 0) {
+        throw 'ScoutSuite service list did not contain an opening bracket.'
+    }
+
+    $closeBracketIndex = $Output.IndexOf(
+        ']',
+        $openBracketIndex
+    )
+
+    if ($closeBracketIndex -lt 0) {
+        throw 'ScoutSuite service list did not contain a closing bracket.'
+    }
+
+    $jsonLength = $closeBracketIndex - $openBracketIndex + 1
+
+    $jsonServiceList = $Output.Substring(
+        $openBracketIndex,
+        $jsonLength
+    )
+
+    try {
+        return @(
+            $jsonServiceList |
+                ConvertFrom-Json
+        )
+    }
+    catch {
+        throw @"
+ScoutSuite returned a service list, but PowerShell could not parse it.
+
+Raw extracted service list:
+$jsonServiceList
+
+Parser error:
+$($_.Exception.Message)
+"@
     }
 }
 
@@ -139,8 +224,11 @@ if ($PromptForAwsCredentials) {
         'AWS session token - press Enter if your credentials do not use one' `
         -AsSecureString
 
-    $secretAccessKey = ConvertFrom-SecureValue $secretAccessKeySecure
-    $sessionToken = ConvertFrom-SecureValue $sessionTokenSecure
+    $secretAccessKey = ConvertFrom-SecureValue `
+        -SecureValue $secretAccessKeySecure
+
+    $sessionToken = ConvertFrom-SecureValue `
+        -SecureValue $sessionTokenSecure
 
     if ([string]::IsNullOrWhiteSpace($secretAccessKey)) {
         throw 'AWS secret access key cannot be blank.'
@@ -150,7 +238,7 @@ if ($PromptForAwsCredentials) {
     $scoutEnvironment['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey
 
     if ([string]::IsNullOrWhiteSpace($sessionToken)) {
-        # Remove inherited temporary-token values when long-lived keys are used.
+        # Clear inherited temporary-token values when using long-lived keys.
         $scoutEnvironment['AWS_SESSION_TOKEN'] = ''
         $scoutEnvironment['AWS_SECURITY_TOKEN'] = ''
     }
@@ -166,7 +254,10 @@ Write-Host 'Discovering supported ScoutSuite services...'
 $scoutArguments = @('aws')
 
 if (-not [string]::IsNullOrWhiteSpace($AwsProfile)) {
-    $scoutArguments += @('--profile', $AwsProfile)
+    $scoutArguments += @(
+        '--profile',
+        $AwsProfile
+    )
 }
 
 $scoutArguments += '--list-services'
@@ -194,8 +285,7 @@ finally {
     $scoutEnvironment.Clear()
 }
 
-# ScoutSuite writes informational logs to stderr.
-# Print them as normal status messages rather than PowerShell errors.
+# ScoutSuite writes normal informational logs to stderr.
 if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
     foreach ($line in ($result.StdErr -split "\r?\n")) {
         if (-not [string]::IsNullOrWhiteSpace($line)) {
@@ -204,7 +294,7 @@ if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
     }
 }
 
-# A non-zero native exit code is a real ScoutSuite failure.
+# A non-zero process exit code is a real ScoutSuite failure.
 if ($result.ExitCode -ne 0) {
     $details = $result.StdErr.Trim()
 
@@ -221,58 +311,28 @@ $details
 "@
 }
 
-# ScoutSuite currently prints the service array inside an informational
-# stderr log line, for example:
-# INFO The available services are: ["acm", "awslambda", "cloudformation"]
-$serviceListPattern = 'The available services are:\s*(\[[^\]]*\])'
+# Search both streams because ScoutSuite versions may differ in where they
+# write informational output.
+$combinedOutput = @(
+    $result.StdOut
+    $result.StdErr
+) -join "`n"
 
-$serviceListMatch = [regex]::Match(
-    $result.StdErr,
-    $serviceListPattern,
-    [System.Text.RegularExpressions.RegexOptions]::Singleline
+$supportedServices = @(
+    Get-ScoutSuiteServiceList -Output $combinedOutput
 )
 
-if (-not $serviceListMatch.Success) {
-    throw @"
-ScoutSuite completed successfully, but its supported-service list could not
-be extracted from the output.
-
-ScoutSuite stdout:
-$($result.StdOut.Trim())
-
-ScoutSuite stderr:
-$($result.StdErr.Trim())
-"@
-}
-
-try {
-    $supportedServices = @(
-        $serviceListMatch.Groups[1].Value |
-            ConvertFrom-Json
-    )
-}
-catch {
-    throw @"
-ScoutSuite completed successfully, but its service list could not be parsed.
-
-Raw service list:
-$($serviceListMatch.Groups[1].Value)
-
-Parser error:
-$($_.Exception.Message)
-"@
-}
-
 if ($supportedServices.Count -eq 0) {
-    throw 'ScoutSuite completed successfully but reported no supported services.'
+    throw 'ScoutSuite completed successfully but reported no services.'
 }
 
 Write-Host ''
 Write-Host "ScoutSuite reported $($supportedServices.Count) supported services:"
 Write-Host ''
 
-$supportedServices | ForEach-Object {
-    Write-Host "  $_"
-}
+$supportedServices |
+    ForEach-Object {
+        Write-Host "  $_"
+    }
 
 return $supportedServices
