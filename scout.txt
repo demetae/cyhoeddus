@@ -2,10 +2,10 @@
 param(
     [string] $ScoutExe = (Join-Path $PSScriptRoot 'Scripts\scout.exe'),
 
-    # Use a configured AWS profile instead of manually entering keys.
+    # Alternative to manually entering credentials.
     [string] $AwsProfile,
 
-    # Prompt for AWS access-key details each time the script runs.
+    # Prompt securely for AWS credentials each time the script runs.
     [switch] $PromptForAwsCredentials
 )
 
@@ -137,6 +137,7 @@ function Get-ScoutSuiteServiceList {
     )
 
     $marker = 'The available services are:'
+
     $markerIndex = $Output.IndexOf(
         $marker,
         [System.StringComparison]::OrdinalIgnoreCase
@@ -144,58 +145,52 @@ function Get-ScoutSuiteServiceList {
 
     if ($markerIndex -lt 0) {
         throw @"
-ScoutSuite completed successfully, but the expected service-list marker was
-not found in its output.
+ScoutSuite completed successfully, but the expected service-list marker
+was not found.
 
 Expected marker:
 $marker
 "@
     }
 
-    $searchStart = $markerIndex + $marker.Length
-
-    $openBracketIndex = $Output.IndexOf(
-        '[',
-        $searchStart
+    $serviceText = $Output.Substring(
+        $markerIndex + $marker.Length
     )
 
-    if ($openBracketIndex -lt 0) {
-        throw 'ScoutSuite service list did not contain an opening bracket.'
-    }
-
-    $closeBracketIndex = $Output.IndexOf(
-        ']',
-        $openBracketIndex
+    # ScoutSuite emits a quoted comma-separated list rather than a JSON array:
+    #
+    # "acm", "awslambda", "cloudformation", ...
+    #
+    # Extract each quoted service name directly.
+    $matches = [regex]::Matches(
+        $serviceText,
+        '"([^"]+)"'
     )
 
-    if ($closeBracketIndex -lt 0) {
-        throw 'ScoutSuite service list did not contain a closing bracket.'
-    }
+    $services = @(
+        foreach ($match in $matches) {
+            $service = $match.Groups[1].Value.Trim()
 
-    $jsonLength = $closeBracketIndex - $openBracketIndex + 1
-
-    $jsonServiceList = $Output.Substring(
-        $openBracketIndex,
-        $jsonLength
+            if (
+                -not [string]::IsNullOrWhiteSpace($service) -and
+                $service -match '^[A-Za-z0-9_-]+$'
+            ) {
+                $service
+            }
+        }
     )
 
-    try {
-        return @(
-            $jsonServiceList |
-                ConvertFrom-Json
-        )
-    }
-    catch {
+    if ($services.Count -eq 0) {
         throw @"
-ScoutSuite returned a service list, but PowerShell could not parse it.
+ScoutSuite completed successfully, but no quoted service names could be
+extracted from its output.
 
-Raw extracted service list:
-$jsonServiceList
-
-Parser error:
-$($_.Exception.Message)
+Text following the service-list marker:
+$serviceText
 "@
     }
+
+    return $services
 }
 
 if ($AwsProfile -and $PromptForAwsCredentials) {
@@ -238,7 +233,7 @@ if ($PromptForAwsCredentials) {
     $scoutEnvironment['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey
 
     if ([string]::IsNullOrWhiteSpace($sessionToken)) {
-        # Clear inherited temporary-token values when using long-lived keys.
+        # Clear inherited token values when using long-lived keys.
         $scoutEnvironment['AWS_SESSION_TOKEN'] = ''
         $scoutEnvironment['AWS_SECURITY_TOKEN'] = ''
     }
@@ -294,7 +289,7 @@ if (-not [string]::IsNullOrWhiteSpace($result.StdErr)) {
     }
 }
 
-# A non-zero process exit code is a real ScoutSuite failure.
+# Non-zero exit codes are genuine ScoutSuite failures.
 if ($result.ExitCode -ne 0) {
     $details = $result.StdErr.Trim()
 
@@ -311,8 +306,8 @@ $details
 "@
 }
 
-# Search both streams because ScoutSuite versions may differ in where they
-# write informational output.
+# Search both streams because ScoutSuite versions may differ in where
+# informational messages are written.
 $combinedOutput = @(
     $result.StdOut
     $result.StdErr
@@ -331,6 +326,7 @@ Write-Host "ScoutSuite reported $($supportedServices.Count) supported services:"
 Write-Host ''
 
 $supportedServices |
+    Sort-Object -Unique |
     ForEach-Object {
         Write-Host "  $_"
     }
