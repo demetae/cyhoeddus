@@ -1,0 +1,33 @@
+files=(
+  targets_*.txt(N)
+  .txt(N)
+)
+
+for file in $files; do
+  output="${file%.txt}"
+  ports="${output##*_}"
+
+  if [[ "$ports" =~ '^([0-9]+)(-([0-9]+))?$' ]]; then
+    first_port="${match[1]}"
+    last_port="${match[3]:-$first_port}"
+
+    if (( first_port >= 1 &&
+          last_port <= 65535 &&
+          first_port <= last_port )); then
+
+      print -- "Scanning CIDRs from $file on TCP port(s) $ports"
+
+      sudo nmap \
+        -sS \
+        -iL "$file" \
+        -p "$ports" \
+        --open \
+        -vvv \
+        -oA "$output"
+
+      continue
+    fi
+  fi
+
+  print -u2 -- "Skipping $file: filename does not end with a valid TCP port or range"
+done
