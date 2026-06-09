@@ -5,7 +5,20 @@ files=(
 
 for file in $files; do
   output="${file%.txt}"
+  normal_output="${output}.nmap"
   ports="${output##*_}"
+
+  # Skip completed scans and resume interrupted scans.
+  if [[ -e "$normal_output" ]]; then
+    if grep -q '^# Nmap done at ' -- "$normal_output"; then
+      print -- "Skipping completed scan: $normal_output"
+      continue
+    fi
+
+    print -- "Resuming incomplete scan: $normal_output"
+    sudo nmap --resume "$normal_output"
+    continue
+  fi
 
   if [[ "$ports" =~ '^([0-9]+)(-([0-9]+))?$' ]]; then
     first_port="${match[1]}"
@@ -19,10 +32,14 @@ for file in $files; do
 
       sudo nmap \
         -sS \
+        -n \
+        -Pn \
         -iL "$file" \
         -p "$ports" \
         --open \
-        -vvv \
+        -vv \
+        --max-retries 2 \
+        --max-rtt-timeout 1000ms \
         -oA "$output"
 
       continue
