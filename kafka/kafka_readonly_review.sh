@@ -56,8 +56,8 @@ EOF
 usage() {
     cat <<'EOF'
 Usage:
-  kafka_readonly_review_v9.sh targets_fqdn.txt
-  kafka_readonly_review_v9.sh targets_fqdn.txt targets_ip.txt
+  kafka_readonly_review_v13.sh targets_fqdn.txt
+  kafka_readonly_review_v13.sh targets_fqdn.txt targets_ip.txt
 
 Environment:
   PORTS="9093"
@@ -70,7 +70,7 @@ Environment:
   SASL_PROBE=1
   SASL_PROBE_USER=test_user
   SASL_PROBE_PASS=test_pwd
-  ALLOW_INSECURE_TLS_PROBE=0
+  ALLOW_INSECURE_TLS_PROBE=0 (optional force override; normally not needed)
 
 Input files contain one hostname or IPv4 address per line.
 Blank lines and # comments are ignored.
@@ -273,7 +273,8 @@ mapfile -t TARGETS < <(printf '%s\n' "${TARGETS[@]}" | sort -u)
     echo "Input files: $*"
     echo "Candidate Kafka ports: $PORTS"
     echo "SASL probe enabled: $SASL_PROBE"
-    echo "Insecure TLS diagnostic retry enabled: $ALLOW_INSECURE_TLS_PROBE"
+    echo "Manual insecure TLS diagnostic override: $ALLOW_INSECURE_TLS_PROBE"
+    echo "Automatic diagnostic bypass after certificate-verification failure: enabled"
     echo
     echo "Tool versions:"
     echo "--------------"
@@ -544,6 +545,8 @@ for host in "${TARGETS[@]}"; do
             add_positive "$target" "Unauthenticated Kafka PLAINTEXT metadata retrieval was not successful on $port."
         fi
 
+        tls_diag_bypass=0
+
         echo "[*] Kafka protocol probe: SSL"
         ssl_file="$probe_dir/SSL.txt"
         (
@@ -567,8 +570,11 @@ for host in "${TARGETS[@]}"; do
         if [[ "$ssl_rc" -eq 0 ]] && metadata_success "$ssl_file"; then
             ssl_success=1
             ssl_diag_file="$ssl_file"
-        elif grep -Eqi 'certificate verify failed|certificate verification failed|SSL handshake failed' "$ssl_file" && \
-             [[ "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
+        elif grep -Eqi 'certificate verify failed|certificate verification failed|self[- ]signed certificate|unable to get local issuer certificate|unable to verify the first certificate' "$ssl_file"; then
+            tls_diag_bypass=1
+            echo "[i] Certificate verification failure detected. Retrying diagnostic Kafka probes with server-certificate verification disabled."
+            add_note "$target" "The normal Kafka SSL probe failed server-certificate verification. The failure was preserved as evidence; subsequent SSL/SASL_SSL probes disabled certificate verification for diagnostic purposes only."
+
             ssl_diag_file="$probe_dir/SSL-insecure-diagnostic.txt"
             (
                 echo "$ kcat -b $target -X security.protocol=SSL -X enable.ssl.certificate.verification=false -d security,broker,protocol -L"
@@ -591,6 +597,10 @@ for host in "${TARGETS[@]}"; do
                 ssl_success=1
                 add_note "$target" "SSL metadata succeeded only after certificate verification was disabled for diagnostic purposes. This does not establish that production clients disable certificate verification."
             fi
+        elif [[ "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
+            tls_diag_bypass=1
+            echo "[i] Manual insecure TLS diagnostic override enabled."
+            add_note "$target" "The manual insecure TLS diagnostic override was enabled; subsequent SSL/SASL_SSL probes disabled server-certificate verification for diagnostic purposes."
         fi
 
         if [[ "$ssl_success" -eq 1 ]]; then
@@ -661,12 +671,14 @@ for host in "${TARGETS[@]}"; do
 
                 f="$sasl_ssl_dir/${mech}.txt"
                 declare -a ssl_args=()
-                if [[ "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
+                ssl_probe_note=""
+                if [[ "$tls_diag_bypass" == "1" || "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
                     ssl_args=(-X enable.ssl.certificate.verification=false)
+                    ssl_probe_note=" -X enable.ssl.certificate.verification=false"
                 fi
 
                 (
-                    echo "$ kcat -b $target -X security.protocol=SASL_SSL -X sasl.mechanism=$mech -X sasl.username=$SASL_PROBE_USER -X sasl.password=<dummy> -d security,broker,protocol -L"
+                    echo "$ kcat -b $target -X security.protocol=SASL_SSL -X sasl.mechanism=$mech -X sasl.username=$SASL_PROBE_USER -X sasl.password=<dummy>${ssl_probe_note} -d security,broker,protocol -L"
                     echo
                     timeout "$KCAT_TIMEOUT" kcat \
                         -b "$target" \
@@ -742,8 +754,8 @@ for host in "${TARGETS[@]}"; do
                     "Informational / Low"
             fi
 
-            if [[ "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
-                add_note "$target" "SASL_SSL diagnostic probes disabled server-certificate verification because the tester did not have the listener trust anchor. This is a testing accommodation only and does not demonstrate production client behaviour."
+            if [[ "$tls_diag_bypass" == "1" || "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
+                add_note "$target" "SASL_SSL diagnostic probes disabled server-certificate verification after a trust failure (or explicit diagnostic override). This is a testing accommodation only and does not demonstrate production client behaviour."
             fi
         else
             echo "SASL probes disabled (SASL_PROBE=0)" > "$probe_dir/SASL-probe-status.txt"
