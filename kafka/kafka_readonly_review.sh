@@ -24,6 +24,7 @@ FINDINGS_MD="$OUT_ROOT/suggested-findings.md"
 FINDINGS_CSV="$OUT_ROOT/suggested-findings.csv"
 NOTES_MD="$OUT_ROOT/review-notes.md"
 POSITIVE_MD="$OUT_ROOT/positive-controls.md"
+SUMMARY_MD="$OUT_ROOT/security-summary.md"
 FINDING_COUNT=0
 
 cat > "$FINDINGS_MD" <<'EOF'
@@ -141,18 +142,47 @@ add_positive() {
 extract_kcat_result() {
     local infile="$1"
     local outfile="$2"
+    local summary=""
+    local exit_status=""
+
+    exit_status="$(grep -Ea '^\[exit-code\]' "$infile" 2>/dev/null | tail -n 1 | sed -E 's/^\[exit-code\][[:space:]]*//')"
+
+    if grep -Eqi 'Unsupported SASL mechanism' "$infile"; then
+        summary="$(grep -Eai 'Unsupported SASL mechanism' "$infile" | tail -n 1)"
+    elif grep -Eqi 'Authentication failed|Invalid username or password|SASL.*authentication.*failed' "$infile"; then
+        summary="$(grep -Eai 'Authentication failed|Invalid username or password|SASL.*authentication.*failed' "$infile" | tail -n 1)"
+    elif grep -Eqi 'certificate verify failed|certificate verification failed|SSL handshake failed' "$infile"; then
+        summary="$(grep -Eai 'certificate verify failed|certificate verification failed|SSL handshake failed' "$infile" | tail -n 1)"
+    elif grep -Eqi 'Failed to acquire metadata' "$infile"; then
+        summary="$(grep -Eai 'Failed to acquire metadata' "$infile" | tail -n 1)"
+    elif grep -Eqi 'Broker transport failure|Disconnected|disconnected|timed out|Timed out' "$infile"; then
+        summary="$(grep -Eai 'Broker transport failure|Disconnected|disconnected|timed out|Timed out' "$infile" | tail -n 1)"
+    elif metadata_success "$infile"; then
+        summary="Kafka metadata returned successfully"
+    else
+        summary="$(grep -Eai '(^%[0-6]\|.*(ERROR|FAIL|AUTH)|(^|[[:space:]])ERROR[: ]|(^|[[:space:]])FAIL[: ]|Failed|failed)' "$infile" 2>/dev/null \
+            | grep -Eavi '\|INIT\||initialized|builtin\.features' \
+            | tail -n 1 || true)"
+    fi
+
+    if [[ -z "$summary" ]]; then
+        summary="No concise result extracted; review full probe output"
+    fi
 
     {
-        echo "Key kcat result:"
-        grep -Eai '(^%.*(ERROR|FAIL|AUTH)|ERROR|FAIL|Failed|failed|Unsupported SASL mechanism|Authentication failed|Invalid username|timed out|Timed out|Disconnected|disconnected|certificate verify|SSL handshake|Broker:)' "$infile" 2>/dev/null | tail -n 25 || true
+        echo "Summary: $summary"
+        echo "Exit code: ${exit_status:-unknown}"
         echo
-        echo "Exit status:"
-        grep -Ea '^\[exit-code\]' "$infile" 2>/dev/null | tail -n 1 || true
+        echo "Relevant evidence:"
+        grep -Eai 'Unsupported SASL mechanism|Authentication failed|Invalid username or password|SASL.*authentication.*failed|certificate verify failed|certificate verification failed|SSL handshake failed|Failed to acquire metadata|Broker transport failure|Disconnected|disconnected|timed out|Timed out|(^%[0-6]\|.*(ERROR|FAIL|AUTH))' "$infile" 2>/dev/null \
+            | grep -Eavi '\|INIT\||initialized|builtin\.features' \
+            | tail -n 25 || true
     } > "$outfile"
+}
 
-    if ! grep -Eqv '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$outfile"; then
-        echo "No concise error/result line was extracted; review the full probe output." >> "$outfile"
-    fi
+get_kcat_summary() {
+    local summary_file="$1"
+    sed -n 's/^Summary: //p' "$summary_file" | head -n 1
 }
 
 testssl_protocol_enabled() {
@@ -480,6 +510,7 @@ for host in "${TARGETS[@]}"; do
         protocol_csv="$port_dir/kcat/protocol-summary.csv"
         printf '"Protocol","Mechanism","Result","Evidence"\n' > "$protocol_csv"
 
+        echo "[*] Kafka protocol probes starting for $target"
         echo "[*] Kafka protocol probe: PLAINTEXT"
         plaintext_file="$probe_dir/PLAINTEXT.txt"
         (
@@ -496,7 +527,7 @@ for host in "${TARGETS[@]}"; do
         ) > "$plaintext_file" 2>&1
         plaintext_rc=$?
         extract_kcat_result "$plaintext_file" "$probe_dir/PLAINTEXT-result-summary.txt"
-        echo "[>] PLAINTEXT result: $(grep -Eav '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$probe_dir/PLAINTEXT-result-summary.txt" | head -n 1)"
+        echo "[>] PLAINTEXT result: $(get_kcat_summary "$probe_dir/PLAINTEXT-result-summary.txt")"
 
         plaintext_success=0
         if [[ "$plaintext_rc" -eq 0 ]] && metadata_success "$plaintext_file"; then
@@ -529,7 +560,7 @@ for host in "${TARGETS[@]}"; do
         ) > "$ssl_file" 2>&1
         ssl_rc=$?
         extract_kcat_result "$ssl_file" "$probe_dir/SSL-result-summary.txt"
-        echo "[>] SSL result: $(grep -Eav '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$probe_dir/SSL-result-summary.txt" | head -n 1)"
+        echo "[>] SSL result: $(get_kcat_summary "$probe_dir/SSL-result-summary.txt")"
 
         ssl_success=0
         ssl_diag_file=""
@@ -554,6 +585,7 @@ for host in "${TARGETS[@]}"; do
             ) > "$ssl_diag_file" 2>&1
             ssl_diag_rc=$?
             extract_kcat_result "$ssl_diag_file" "$probe_dir/SSL-insecure-diagnostic-result-summary.txt"
+            echo "[>] SSL diagnostic retry (certificate verification disabled): $(get_kcat_summary "$probe_dir/SSL-insecure-diagnostic-result-summary.txt")"
 
             if [[ "$ssl_diag_rc" -eq 0 ]] && metadata_success "$ssl_diag_file"; then
                 ssl_success=1
@@ -612,7 +644,7 @@ for host in "${TARGETS[@]}"; do
                 ) > "$f" 2>&1
                 rc=$?
                 extract_kcat_result "$f" "$sasl_pt_dir/${mech}-result-summary.txt"
-                echo "[>] SASL_PLAINTEXT/$mech: $(grep -Eav '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$sasl_pt_dir/${mech}-result-summary.txt" | head -n 1)"
+                echo "[>] SASL_PLAINTEXT/$mech: $(get_kcat_summary "$sasl_pt_dir/${mech}-result-summary.txt")"
 
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_PLAINTEXT","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
@@ -651,7 +683,7 @@ for host in "${TARGETS[@]}"; do
                 ) > "$f" 2>&1
                 rc=$?
                 extract_kcat_result "$f" "$sasl_ssl_dir/${mech}-result-summary.txt"
-                echo "[>] SASL_SSL/$mech: $(grep -Eav '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$sasl_ssl_dir/${mech}-result-summary.txt" | head -n 1)"
+                echo "[>] SASL_SSL/$mech: $(get_kcat_summary "$sasl_ssl_dir/${mech}-result-summary.txt")"
 
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_SSL","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
@@ -791,12 +823,102 @@ EOF
     fi
 } >> "$FINDINGS_MD"
 
+positive_count="$(grep -Ec '^- \*\*' "$POSITIVE_MD" 2>/dev/null || true)"
+note_count="$(grep -Ec '^- \*\*' "$NOTES_MD" 2>/dev/null || true)"
+
+{
+    echo "# Kafka Security Review Summary"
+    echo
+    echo "## Security Positives"
+    echo
+    if [[ "${positive_count:-0}" -gt 0 ]]; then
+        grep -E '^- \*\*' "$POSITIVE_MD" || true
+    else
+        echo "- No positive controls were automatically identified."
+    fi
+    echo
+    echo "## Candidate Security Findings"
+    echo
+    if [[ "$FINDING_COUNT" -gt 0 ]]; then
+        awk '
+            /^## \[/ {
+                title=$0
+                sub(/^## /,"",title)
+                severity=""
+                target=""
+            }
+            /^- \*\*Target:\*\*/ {
+                target=$0
+                sub(/^- \*\*Target:\*\* /,"",target)
+            }
+            /^- \*\*Suggested severity:\*\*/ {
+                severity=$0
+                sub(/^- \*\*Suggested severity:\*\* /,"",severity)
+                printf "- %s — %s — %s\n", title, severity, target
+            }
+        ' "$FINDINGS_MD"
+    else
+        echo "- No candidate findings were automatically identified."
+    fi
+    echo
+    echo "## Contextual Observations"
+    echo
+    if [[ "${note_count:-0}" -gt 0 ]]; then
+        grep -E '^- \*\*' "$NOTES_MD" || true
+    else
+        echo "- No additional contextual observations were recorded."
+    fi
+    echo
+    echo "## Totals"
+    echo
+    echo "- Positive controls: ${positive_count:-0}"
+    echo "- Candidate findings: $FINDING_COUNT"
+    echo "- Contextual observations: ${note_count:-0}"
+    echo
+    echo "Automated classifications require analyst validation before reporting."
+} > "$SUMMARY_MD"
+
+echo
+echo "============================================================"
+echo "Kafka Security Review Summary"
+echo "============================================================"
+echo "[+] Positive controls:       ${positive_count:-0}"
+echo "[-] Candidate findings:      $FINDING_COUNT"
+echo "[i] Contextual observations: ${note_count:-0}"
+echo
+echo "[+] Positive security controls:"
+if [[ "${positive_count:-0}" -gt 0 ]]; then
+    grep -E '^- \*\*' "$POSITIVE_MD" | sed 's/^- /    + /' || true
+else
+    echo "    + None automatically identified"
+fi
+echo
+echo "[-] Candidate security findings:"
+if [[ "$FINDING_COUNT" -gt 0 ]]; then
+    awk '
+        /^## \[/ {
+            title=$0
+            sub(/^## /,"",title)
+            severity=""
+        }
+        /^- \*\*Suggested severity:\*\*/ {
+            severity=$0
+            sub(/^- \*\*Suggested severity:\*\* /,"",severity)
+            printf "    - %s — %s\n", title, severity
+        }
+    ' "$FINDINGS_MD"
+else
+    echo "    - None automatically identified"
+fi
+echo
+echo "[i] Full contextual observations are stored in:"
+echo "    $NOTES_MD"
 echo
 echo "[+] Review complete"
-echo "[+] Evidence:              $OUT_ROOT"
-echo "[+] Candidate findings:    $FINDINGS_MD"
-echo "[+] Candidate findings CSV:$FINDINGS_CSV"
-echo "[+] Review notes:          $NOTES_MD"
-echo "[+] Positive controls:     $POSITIVE_MD"
-echo "[+] Protocol summaries:    <target>/port-<port>/kcat/protocol-summary.csv"
-echo "[+] Candidate finding count: $FINDING_COUNT"
+echo "[+] Evidence:                $OUT_ROOT"
+echo "[+] Consolidated summary:    $SUMMARY_MD"
+echo "[+] Candidate findings:      $FINDINGS_MD"
+echo "[+] Candidate findings CSV:  $FINDINGS_CSV"
+echo "[+] Positive controls:       $POSITIVE_MD"
+echo "[+] Review notes:            $NOTES_MD"
+echo "[+] Protocol summaries:      <target>/port-<port>/kcat/protocol-summary.csv"
