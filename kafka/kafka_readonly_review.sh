@@ -25,6 +25,8 @@ FINDINGS_CSV="$OUT_ROOT/suggested-findings.csv"
 NOTES_MD="$OUT_ROOT/review-notes.md"
 POSITIVE_MD="$OUT_ROOT/positive-controls.md"
 SUMMARY_MD="$OUT_ROOT/security-summary.md"
+AGG_PROTOCOL_CSV="$OUT_ROOT/protocol-matrix.csv"
+AGG_PROTOCOL_MD="$OUT_ROOT/protocol-matrix.md"
 FINDING_COUNT=0
 
 cat > "$FINDINGS_MD" <<'EOF'
@@ -53,11 +55,13 @@ Positive security controls observed during the read-only review.
 
 EOF
 
+printf '"Target","Port","PLAINTEXT","SSL","SASL_PLAINTEXT_PLAIN","SASL_PLAINTEXT_SCRAM_SHA_256","SASL_PLAINTEXT_SCRAM_SHA_512","SASL_SSL_PLAIN","SASL_SSL_SCRAM_SHA_256","SASL_SSL_SCRAM_SHA_512","Advertised_SASL_Mechanisms"\n' > "$AGG_PROTOCOL_CSV"
+
 usage() {
     cat <<'EOF'
 Usage:
-  kafka_readonly_review_v13.sh targets_fqdn.txt
-  kafka_readonly_review_v13.sh targets_fqdn.txt targets_ip.txt
+  kafka_readonly_review_v15.sh targets_fqdn.txt
+  kafka_readonly_review_v15.sh targets_fqdn.txt targets_ip.txt
 
 Environment:
   PORTS="9093"
@@ -511,6 +515,16 @@ for host in "${TARGETS[@]}"; do
         protocol_csv="$port_dir/kcat/protocol-summary.csv"
         printf '"Protocol","Mechanism","Result","Evidence"\n' > "$protocol_csv"
 
+        agg_plaintext="Not accepted / inconclusive"
+        agg_ssl="Not accepted / inconclusive"
+        agg_sasl_pt_plain="Not tested / inconclusive"
+        agg_sasl_pt_scram256="Not tested / inconclusive"
+        agg_sasl_pt_scram512="Not tested / inconclusive"
+        agg_sasl_ssl_plain="Not tested / inconclusive"
+        agg_sasl_ssl_scram256="Not tested / inconclusive"
+        agg_sasl_ssl_scram512="Not tested / inconclusive"
+        supported_mechs=""
+
         echo "[*] Kafka protocol probes starting for $target"
         echo "[*] Kafka protocol probe: PLAINTEXT"
         plaintext_file="$probe_dir/PLAINTEXT.txt"
@@ -533,6 +547,7 @@ for host in "${TARGETS[@]}"; do
         plaintext_success=0
         if [[ "$plaintext_rc" -eq 0 ]] && metadata_success "$plaintext_file"; then
             plaintext_success=1
+            agg_plaintext="Metadata returned"
             printf '"PLAINTEXT","","metadata returned","%s"\n' "$plaintext_file" >> "$protocol_csv"
             add_finding \
                 "Transport Security / Authentication" "$target" \
@@ -604,6 +619,7 @@ for host in "${TARGETS[@]}"; do
         fi
 
         if [[ "$ssl_success" -eq 1 ]]; then
+            agg_ssl="Metadata returned without Kafka credentials"
             printf '"SSL","","metadata returned without Kafka credentials","%s"\n' "$ssl_diag_file" >> "$protocol_csv"
             add_finding \
                 "Authentication / Information Exposure" "$target" \
@@ -616,6 +632,15 @@ for host in "${TARGETS[@]}"; do
                 add_note "$target" "Anonymous SSL metadata appears to expose private/internal addressing or cluster-local naming."
             fi
         else
+            if grep -Eqi 'certificate verify failed|certificate verification failed|self[- ]signed certificate|unable to get local issuer certificate|unable to verify the first certificate' "$ssl_file"; then
+                if [[ "$tls_diag_bypass" -eq 1 && -n "$ssl_diag_file" ]]; then
+                    agg_ssl="Certificate verification failed; diagnostic retry did not return metadata"
+                else
+                    agg_ssl="Certificate verification failed"
+                fi
+            else
+                agg_ssl="Not accepted / authentication or TLS control encountered"
+            fi
             printf '"SSL","","not accepted / authentication or TLS control encountered","%s"\n' "$ssl_file" >> "$protocol_csv"
             add_positive "$target" "SSL-only Kafka metadata retrieval without SASL credentials was not successful."
         fi
@@ -659,14 +684,33 @@ for host in "${TARGETS[@]}"; do
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_PLAINTEXT","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
                     case "$mech" in
-                        PLAIN) plain_sasl_plaintext=1 ;;
-                        SCRAM-SHA-256) scram256_sasl_plaintext=1 ;;
-                        SCRAM-SHA-512) scram512_sasl_plaintext=1 ;;
+                        PLAIN)
+                            plain_sasl_plaintext=1
+                            agg_sasl_pt_plain="Accepted; dummy credentials rejected"
+                            ;;
+                        SCRAM-SHA-256)
+                            scram256_sasl_plaintext=1
+                            agg_sasl_pt_scram256="Accepted; dummy credentials rejected"
+                            ;;
+                        SCRAM-SHA-512)
+                            scram512_sasl_plaintext=1
+                            agg_sasl_pt_scram512="Accepted; dummy credentials rejected"
+                            ;;
                     esac
                 elif sasl_unsupported "$f"; then
                     printf '"SASL_PLAINTEXT","%s","unsupported mechanism","%s"\n' "$mech" "$f" >> "$protocol_csv"
+                    case "$mech" in
+                        PLAIN) agg_sasl_pt_plain="Unsupported mechanism" ;;
+                        SCRAM-SHA-256) agg_sasl_pt_scram256="Unsupported mechanism" ;;
+                        SCRAM-SHA-512) agg_sasl_pt_scram512="Unsupported mechanism" ;;
+                    esac
                 else
                     printf '"SASL_PLAINTEXT","%s","not accepted / inconclusive","%s"\n' "$mech" "$f" >> "$protocol_csv"
+                    case "$mech" in
+                        PLAIN) agg_sasl_pt_plain="Not accepted / inconclusive" ;;
+                        SCRAM-SHA-256) agg_sasl_pt_scram256="Not accepted / inconclusive" ;;
+                        SCRAM-SHA-512) agg_sasl_pt_scram512="Not accepted / inconclusive" ;;
+                    esac
                 fi
 
                 f="$sasl_ssl_dir/${mech}.txt"
@@ -700,14 +744,33 @@ for host in "${TARGETS[@]}"; do
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_SSL","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
                     case "$mech" in
-                        PLAIN) plain_sasl_ssl=1 ;;
-                        SCRAM-SHA-256) scram256_sasl_ssl=1 ;;
-                        SCRAM-SHA-512) scram512_sasl_ssl=1 ;;
+                        PLAIN)
+                            plain_sasl_ssl=1
+                            agg_sasl_ssl_plain="Accepted; dummy credentials rejected"
+                            ;;
+                        SCRAM-SHA-256)
+                            scram256_sasl_ssl=1
+                            agg_sasl_ssl_scram256="Accepted; dummy credentials rejected"
+                            ;;
+                        SCRAM-SHA-512)
+                            scram512_sasl_ssl=1
+                            agg_sasl_ssl_scram512="Accepted; dummy credentials rejected"
+                            ;;
                     esac
                 elif sasl_unsupported "$f"; then
                     printf '"SASL_SSL","%s","unsupported mechanism","%s"\n' "$mech" "$f" >> "$protocol_csv"
+                    case "$mech" in
+                        PLAIN) agg_sasl_ssl_plain="Unsupported mechanism" ;;
+                        SCRAM-SHA-256) agg_sasl_ssl_scram256="Unsupported mechanism" ;;
+                        SCRAM-SHA-512) agg_sasl_ssl_scram512="Unsupported mechanism" ;;
+                    esac
                 else
                     printf '"SASL_SSL","%s","not accepted / inconclusive","%s"\n' "$mech" "$f" >> "$protocol_csv"
+                    case "$mech" in
+                        PLAIN) agg_sasl_ssl_plain="Not accepted / inconclusive" ;;
+                        SCRAM-SHA-256) agg_sasl_ssl_scram256="Not accepted / inconclusive" ;;
+                        SCRAM-SHA-512) agg_sasl_ssl_scram512="Not accepted / inconclusive" ;;
+                    esac
                 fi
             done
 
@@ -761,6 +824,12 @@ for host in "${TARGETS[@]}"; do
             echo "SASL probes disabled (SASL_PROBE=0)" > "$probe_dir/SASL-probe-status.txt"
             echo "SASL probes disabled" > "$sasl_pt_dir/NOT_RUN.txt"
             echo "SASL probes disabled" > "$sasl_ssl_dir/NOT_RUN.txt"
+            agg_sasl_pt_plain="Not tested"
+            agg_sasl_pt_scram256="Not tested"
+            agg_sasl_pt_scram512="Not tested"
+            agg_sasl_ssl_plain="Not tested"
+            agg_sasl_ssl_scram256="Not tested"
+            agg_sasl_ssl_scram512="Not tested"
             add_note "$target" "SASL mechanism probes were not run (SASL_PROBE=0)."
         fi
 
@@ -775,6 +844,20 @@ for host in "${TARGETS[@]}"; do
               "$scram512_sasl_plaintext" -eq 0 ]]; then
             add_note "$target" "TLS was detected and the tested plaintext Kafka protocol variants were not accepted. This is a positive transport-control observation."
         fi
+
+        {
+            csv_escape "$host"; printf ','
+            csv_escape "$port"; printf ','
+            csv_escape "$agg_plaintext"; printf ','
+            csv_escape "$agg_ssl"; printf ','
+            csv_escape "$agg_sasl_pt_plain"; printf ','
+            csv_escape "$agg_sasl_pt_scram256"; printf ','
+            csv_escape "$agg_sasl_pt_scram512"; printf ','
+            csv_escape "$agg_sasl_ssl_plain"; printf ','
+            csv_escape "$agg_sasl_ssl_scram256"; printf ','
+            csv_escape "$agg_sasl_ssl_scram512"; printf ','
+            csv_escape "${supported_mechs:-}"; printf '\n'
+        } >> "$AGG_PROTOCOL_CSV"
 
         {
             echo "Port: $port"
@@ -837,6 +920,24 @@ EOF
 
 positive_count="$(grep -Ec '^- \*\*' "$POSITIVE_MD" 2>/dev/null || true)"
 note_count="$(grep -Ec '^- \*\*' "$NOTES_MD" 2>/dev/null || true)"
+
+{
+    echo "# Kafka Protocol / Mechanism Matrix"
+    echo
+    echo "| Target | Port | PLAINTEXT | SSL | SASL_PLAINTEXT / PLAIN | SASL_PLAINTEXT / SCRAM-256 | SASL_PLAINTEXT / SCRAM-512 | SASL_SSL / PLAIN | SASL_SSL / SCRAM-256 | SASL_SSL / SCRAM-512 | Advertised SASL mechanisms |"
+    echo "|---|---:|---|---|---|---|---|---|---|---|---|"
+    awk -F',' '
+        NR == 1 { next }
+        {
+            for (i=1; i<=NF; i++) {
+                gsub(/^"|"$/, "", $i)
+                gsub(/""/, "\"", $i)
+            }
+            printf "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
+        }
+    ' "$AGG_PROTOCOL_CSV"
+} > "$AGG_PROTOCOL_MD"
 
 {
     echo "# Kafka Security Review Summary"
@@ -911,12 +1012,18 @@ if [[ "$FINDING_COUNT" -gt 0 ]]; then
         /^## \[/ {
             title=$0
             sub(/^## /,"",title)
+            target=""
             severity=""
+        }
+        /^- \*\*Target:\*\*/ {
+            target=$0
+            sub(/^- \*\*Target:\*\* /,"",target)
+            gsub(/`/,"",target)
         }
         /^- \*\*Suggested severity:\*\*/ {
             severity=$0
             sub(/^- \*\*Suggested severity:\*\* /,"",severity)
-            printf "    - %s — %s\n", title, severity
+            printf "    - %s — %s — %s\n", target, title, severity
         }
     ' "$FINDINGS_MD"
 else
@@ -933,4 +1040,6 @@ echo "[+] Candidate findings:      $FINDINGS_MD"
 echo "[+] Candidate findings CSV:  $FINDINGS_CSV"
 echo "[+] Positive controls:       $POSITIVE_MD"
 echo "[+] Review notes:            $NOTES_MD"
-echo "[+] Protocol summaries:      <target>/port-<port>/kcat/protocol-summary.csv"
+echo "[+] Aggregate protocol CSV:    $AGG_PROTOCOL_CSV"
+echo "[+] Aggregate protocol matrix: $AGG_PROTOCOL_MD"
+echo "[+] Protocol summaries:        <target>/port-<port>/kcat/protocol-summary.csv"
