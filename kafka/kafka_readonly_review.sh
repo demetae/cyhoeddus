@@ -12,7 +12,7 @@ OPENSSL_TIMEOUT="${OPENSSL_TIMEOUT:-15}"
 KCAT_TIMEOUT="${KCAT_TIMEOUT:-20}"
 TESTSSL_TIMEOUT="${TESTSSL_TIMEOUT:-600}"
 
-SASL_PROBE="${SASL_PROBE:-0}"
+SASL_PROBE="${SASL_PROBE:-1}"
 SASL_PROBE_USER="${SASL_PROBE_USER:-test_user}"
 SASL_PROBE_PASS="${SASL_PROBE_PASS:-test_pwd}"
 
@@ -23,6 +23,7 @@ mkdir -p "$OUT_ROOT"
 FINDINGS_MD="$OUT_ROOT/suggested-findings.md"
 FINDINGS_CSV="$OUT_ROOT/suggested-findings.csv"
 NOTES_MD="$OUT_ROOT/review-notes.md"
+POSITIVE_MD="$OUT_ROOT/positive-controls.md"
 FINDING_COUNT=0
 
 cat > "$FINDINGS_MD" <<'EOF'
@@ -41,15 +42,21 @@ printf '"Category","Target","Suggested finding","Suggested severity","Rationale"
 
 cat > "$NOTES_MD" <<'EOF'
 
-Operational observations and controls detected during the read-only review.
+Operational observations detected during the read-only review.
+
+EOF
+
+cat > "$POSITIVE_MD" <<'EOF'
+
+Positive security controls observed during the read-only review.
 
 EOF
 
 usage() {
     cat <<'EOF'
 Usage:
-  kafka_readonly_review_v7.sh targets_fqdn.txt
-  kafka_readonly_review_v7.sh targets_fqdn.txt targets_ip.txt
+  kafka_readonly_review_v9.sh targets_fqdn.txt
+  kafka_readonly_review_v9.sh targets_fqdn.txt targets_ip.txt
 
 Environment:
   PORTS="9093"
@@ -59,7 +66,7 @@ Environment:
   OPENSSL_TIMEOUT=15
   KCAT_TIMEOUT=20
   TESTSSL_TIMEOUT=600
-  SASL_PROBE=0
+  SASL_PROBE=1
   SASL_PROBE_USER=test_user
   SASL_PROBE_PASS=test_pwd
   ALLOW_INSECURE_TLS_PROBE=0
@@ -123,6 +130,36 @@ add_note() {
     local target="$1"
     local note="$2"
     echo "- **$target:** $note" >> "$NOTES_MD"
+}
+
+add_positive() {
+    local target="$1"
+    local note="$2"
+    echo "- **$target:** $note" >> "$POSITIVE_MD"
+}
+
+extract_kcat_result() {
+    local infile="$1"
+    local outfile="$2"
+
+    {
+        echo "Key kcat result:"
+        grep -Eai '(^%.*(ERROR|FAIL|AUTH)|ERROR|FAIL|Failed|failed|Unsupported SASL mechanism|Authentication failed|Invalid username|timed out|Timed out|Disconnected|disconnected|certificate verify|SSL handshake|Broker:)' "$infile" 2>/dev/null | tail -n 25 || true
+        echo
+        echo "Exit status:"
+        grep -Ea '^\[exit-code\]' "$infile" 2>/dev/null | tail -n 1 || true
+    } > "$outfile"
+
+    if ! grep -Eqv '^(Key kcat result:|Exit status:|[[:space:]]*$)' "$outfile"; then
+        echo "No concise error/result line was extracted; review the full probe output." >> "$outfile"
+    fi
+}
+
+testssl_protocol_enabled() {
+    local version_re="$1"
+    local infile="$2"
+
+    grep -Eai "$version_re" "$infile" 2>/dev/null         | grep -Eavi 'not offered|not supported|not available|disabled|(^|[[:space:]])no([[:space:]]|$)|false'         | grep -Eqi 'offered|supported|enabled|(^|[[:space:]])yes([[:space:]]|$)|true'
 }
 
 run_capture() {
@@ -310,6 +347,7 @@ for host in "${TARGETS[@]}"; do
         if grep -Eq 'BEGIN CERTIFICATE|Protocol *:|Cipher is |Ciphersuite:' "$tls_raw"; then
             tls_detected=1
             echo "TLS detected" > "$port_dir/tls/status.txt"
+            add_positive "$target" "TLS was detected on the Kafka listener."
 
             timeout "$OPENSSL_TIMEOUT" openssl s_client \
                 -connect "${host}:${port}" -servername "$host" -tls1_3 \
@@ -320,7 +358,9 @@ for host in "${TARGETS[@]}"; do
                 </dev/null > "$port_dir/tls/openssl-tls12.txt" 2>&1 || true
 
             grep -Eq 'New, TLSv1\.3|Protocol *: TLSv1\.3|Protocol  *TLSv1\.3' "$port_dir/tls/openssl-tls13.txt" && tls13_ok=1
+            [[ "$tls13_ok" -eq 1 ]] && add_positive "$target" "TLS 1.3 was successfully negotiated."
             grep -Eq 'New, TLSv1\.2|Protocol *: TLSv1\.2|Protocol  *TLSv1\.2' "$port_dir/tls/openssl-tls12.txt" && tls12_ok=1
+            [[ "$tls12_ok" -eq 1 ]] && add_positive "$target" "TLS 1.2 was successfully negotiated."
 
             if [[ "$tls12_ok" -eq 1 && "$tls13_ok" -eq 0 ]]; then
                 weak_tls_reasons+=("TLS 1.3 was not offered; TLS 1.2 was available")
@@ -363,22 +403,26 @@ for host in "${TARGETS[@]}"; do
                     weak_tls_sources+=("$port_dir/tls/testssl-console.txt")
                 fi
 
-                if grep -Eqi 'TLS[[:space:]]*1\.0.*(offered|supported)|TLSv1([^.]|$).*(offered|supported)' "$port_dir/tls/testssl-console.txt"; then
+                if testssl_protocol_enabled 'TLS[[:space:]]*1\.0|TLSv1([^.]|$)' "$port_dir/tls/testssl-console.txt"; then
                     add_finding \
                         "TLS Hardening" "$target" \
                         "Deprecated TLS 1.0 appears to be supported" \
                         "TLS 1.0 is obsolete and should be disabled where application compatibility permits. Retain modern TLS versions and cipher suites." \
                         "$port_dir/tls/testssl-console.txt" \
                         "Medium"
+                else
+                    add_positive "$target" "TLS 1.0 was not reported as enabled by testssl.sh."
                 fi
 
-                if grep -Eqi 'TLS[[:space:]]*1\.1.*(offered|supported)|TLSv1\.1.*(offered|supported)' "$port_dir/tls/testssl-console.txt"; then
+                if testssl_protocol_enabled 'TLS[[:space:]]*1\.1|TLSv1\.1' "$port_dir/tls/testssl-console.txt"; then
                     add_finding \
                         "TLS Hardening" "$target" \
                         "Deprecated TLS 1.1 appears to be supported" \
                         "TLS 1.1 is obsolete and should be disabled where application compatibility permits. Retain modern TLS versions and cipher suites." \
                         "$port_dir/tls/testssl-console.txt" \
                         "Medium"
+                else
+                    add_positive "$target" "TLS 1.1 was not reported as enabled by testssl.sh."
                 fi
 
                 if grep -Eqi 'certificate.*expired|expired.*certificate' "$port_dir/tls/testssl-console.txt"; then
@@ -438,12 +482,20 @@ for host in "${TARGETS[@]}"; do
 
         echo "[*] Kafka protocol probe: PLAINTEXT"
         plaintext_file="$probe_dir/PLAINTEXT.txt"
-        timeout "$KCAT_TIMEOUT" kcat \
-            -b "$target" \
-            -X security.protocol=PLAINTEXT \
-            -L > "$plaintext_file" 2>&1
+        {
+            echo "$ kcat -b $target -X security.protocol=PLAINTEXT -d security,broker,protocol -L"
+            echo
+            timeout "$KCAT_TIMEOUT" kcat \
+                -b "$target" \
+                -X security.protocol=PLAINTEXT \
+                -d security,broker,protocol \
+                -L
+            plaintext_rc=$?
+            printf '\n[exit-code] %s\n' "$plaintext_rc"
+            exit "$plaintext_rc"
+        } > "$plaintext_file" 2>&1
         plaintext_rc=$?
-        printf '\n[exit-code] %s\n' "$plaintext_rc" >> "$plaintext_file"
+        extract_kcat_result "$plaintext_file" "$probe_dir/PLAINTEXT-result-summary.txt"
 
         plaintext_success=0
         if [[ "$plaintext_rc" -eq 0 ]] && metadata_success "$plaintext_file"; then
@@ -457,17 +509,25 @@ for host in "${TARGETS[@]}"; do
                 "Medium"
         else
             printf '"PLAINTEXT","","not accepted / inconclusive","%s"\n' "$plaintext_file" >> "$protocol_csv"
-            add_note "$target" "PLAINTEXT metadata probe did not succeed."
+            add_positive "$target" "Unauthenticated Kafka PLAINTEXT metadata retrieval was not successful on $port."
         fi
 
         echo "[*] Kafka protocol probe: SSL"
         ssl_file="$probe_dir/SSL.txt"
-        timeout "$KCAT_TIMEOUT" kcat \
-            -b "$target" \
-            -X security.protocol=SSL \
-            -L > "$ssl_file" 2>&1
+        {
+            echo "$ kcat -b $target -X security.protocol=SSL -d security,broker,protocol -L"
+            echo
+            timeout "$KCAT_TIMEOUT" kcat \
+                -b "$target" \
+                -X security.protocol=SSL \
+                -d security,broker,protocol \
+                -L
+            ssl_rc=$?
+            printf '\n[exit-code] %s\n' "$ssl_rc"
+            exit "$ssl_rc"
+        } > "$ssl_file" 2>&1
         ssl_rc=$?
-        printf '\n[exit-code] %s\n' "$ssl_rc" >> "$ssl_file"
+        extract_kcat_result "$ssl_file" "$probe_dir/SSL-result-summary.txt"
 
         ssl_success=0
         ssl_diag_file=""
@@ -477,13 +537,21 @@ for host in "${TARGETS[@]}"; do
         elif grep -Eqi 'certificate verify failed|certificate verification failed|SSL handshake failed' "$ssl_file" && \
              [[ "$ALLOW_INSECURE_TLS_PROBE" == "1" ]]; then
             ssl_diag_file="$probe_dir/SSL-insecure-diagnostic.txt"
-            timeout "$KCAT_TIMEOUT" kcat \
-                -b "$target" \
-                -X security.protocol=SSL \
-                -X enable.ssl.certificate.verification=false \
-                -L > "$ssl_diag_file" 2>&1
+            {
+                echo "$ kcat -b $target -X security.protocol=SSL -X enable.ssl.certificate.verification=false -d security,broker,protocol -L"
+                echo
+                timeout "$KCAT_TIMEOUT" kcat \
+                    -b "$target" \
+                    -X security.protocol=SSL \
+                    -X enable.ssl.certificate.verification=false \
+                    -d security,broker,protocol \
+                    -L
+                ssl_diag_rc=$?
+                printf '\n[exit-code] %s\n' "$ssl_diag_rc"
+                exit "$ssl_diag_rc"
+            } > "$ssl_diag_file" 2>&1
             ssl_diag_rc=$?
-            printf '\n[exit-code] %s\n' "$ssl_diag_rc" >> "$ssl_diag_file"
+            extract_kcat_result "$ssl_diag_file" "$probe_dir/SSL-insecure-diagnostic-result-summary.txt"
 
             if [[ "$ssl_diag_rc" -eq 0 ]] && metadata_success "$ssl_diag_file"; then
                 ssl_success=1
@@ -505,7 +573,7 @@ for host in "${TARGETS[@]}"; do
             fi
         else
             printf '"SSL","","not accepted / authentication or TLS control encountered","%s"\n' "$ssl_file" >> "$protocol_csv"
-            add_note "$target" "SSL-only Kafka metadata retrieval did not succeed."
+            add_positive "$target" "SSL-only Kafka metadata retrieval without SASL credentials was not successful."
         fi
 
         plain_sasl_plaintext=0
@@ -515,25 +583,33 @@ for host in "${TARGETS[@]}"; do
         scram256_sasl_ssl=0
         scram512_sasl_ssl=0
 
-        if [[ "$SASL_PROBE" == "1" ]]; then
-            echo "[*] Running opt-in SASL_PLAINTEXT and SASL_SSL mechanism probes"
+        sasl_pt_dir="$probe_dir/SASL_PLAINTEXT"
+        sasl_ssl_dir="$probe_dir/SASL_SSL"
+        mkdir -p "$sasl_pt_dir" "$sasl_ssl_dir"
 
-            sasl_pt_dir="$probe_dir/SASL_PLAINTEXT"
-            sasl_ssl_dir="$probe_dir/SASL_SSL"
-            mkdir -p "$sasl_pt_dir" "$sasl_ssl_dir"
+        if [[ "$SASL_PROBE" == "1" ]]; then
+            echo "[*] Running SASL_PLAINTEXT and SASL_SSL mechanism probes"
+            echo "SASL probes enabled" > "$probe_dir/SASL-probe-status.txt"
 
             for mech in PLAIN SCRAM-SHA-256 SCRAM-SHA-512; do
                 f="$sasl_pt_dir/${mech}.txt"
-                timeout "$KCAT_TIMEOUT" kcat \
-                    -b "$target" \
-                    -X security.protocol=SASL_PLAINTEXT \
-                    -X "sasl.mechanism=$mech" \
-                    -X "sasl.username=$SASL_PROBE_USER" \
-                    -X "sasl.password=$SASL_PROBE_PASS" \
-                    -d security,broker,protocol \
-                    -L > "$f" 2>&1
+                {
+                    echo "$ kcat -b $target -X security.protocol=SASL_PLAINTEXT -X sasl.mechanism=$mech -X sasl.username=$SASL_PROBE_USER -X sasl.password=<dummy> -d security,broker,protocol -L"
+                    echo
+                    timeout "$KCAT_TIMEOUT" kcat \
+                        -b "$target" \
+                        -X security.protocol=SASL_PLAINTEXT \
+                        -X "sasl.mechanism=$mech" \
+                        -X "sasl.username=$SASL_PROBE_USER" \
+                        -X "sasl.password=$SASL_PROBE_PASS" \
+                        -d security,broker,protocol \
+                        -L
+                    rc=$?
+                    printf '\n[exit-code] %s\n' "$rc"
+                    exit "$rc"
+                } > "$f" 2>&1
                 rc=$?
-                printf '\n[exit-code] %s\n' "$rc" >> "$f"
+                extract_kcat_result "$f" "$sasl_pt_dir/${mech}-result-summary.txt"
 
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_PLAINTEXT","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
@@ -554,17 +630,24 @@ for host in "${TARGETS[@]}"; do
                     ssl_args=(-X enable.ssl.certificate.verification=false)
                 fi
 
-                timeout "$KCAT_TIMEOUT" kcat \
-                    -b "$target" \
-                    -X security.protocol=SASL_SSL \
-                    -X "sasl.mechanism=$mech" \
-                    -X "sasl.username=$SASL_PROBE_USER" \
-                    -X "sasl.password=$SASL_PROBE_PASS" \
-                    "${ssl_args[@]}" \
-                    -d security,broker,protocol \
-                    -L > "$f" 2>&1
+                {
+                    echo "$ kcat -b $target -X security.protocol=SASL_SSL -X sasl.mechanism=$mech -X sasl.username=$SASL_PROBE_USER -X sasl.password=<dummy> -d security,broker,protocol -L"
+                    echo
+                    timeout "$KCAT_TIMEOUT" kcat \
+                        -b "$target" \
+                        -X security.protocol=SASL_SSL \
+                        -X "sasl.mechanism=$mech" \
+                        -X "sasl.username=$SASL_PROBE_USER" \
+                        -X "sasl.password=$SASL_PROBE_PASS" \
+                        "${ssl_args[@]}" \
+                        -d security,broker,protocol \
+                        -L
+                    rc=$?
+                    printf '\n[exit-code] %s\n' "$rc"
+                    exit "$rc"
+                } > "$f" 2>&1
                 rc=$?
-                printf '\n[exit-code] %s\n' "$rc" >> "$f"
+                extract_kcat_result "$f" "$sasl_ssl_dir/${mech}-result-summary.txt"
 
                 if auth_failed_not_unsupported "$f"; then
                     printf '"SASL_SSL","%s","mechanism accepted; dummy credentials rejected","%s"\n' "$mech" "$f" >> "$protocol_csv"
@@ -579,6 +662,14 @@ for host in "${TARGETS[@]}"; do
                     printf '"SASL_SSL","%s","not accepted / inconclusive","%s"\n' "$mech" "$f" >> "$protocol_csv"
                 fi
             done
+
+            if [[ "$plain_sasl_plaintext" -eq 0 && "$scram256_sasl_plaintext" -eq 0 && "$scram512_sasl_plaintext" -eq 0 ]]; then
+                add_positive "$target" "No tested SASL mechanism progressed to credential validation over SASL_PLAINTEXT."
+            fi
+
+            if [[ "$plain_sasl_ssl" -eq 1 ]]; then
+                add_positive "$target" "SASL_SSL authentication is enforced: the PLAIN mechanism was accepted but the dummy credentials were rejected."
+            fi
 
             supported_mechs="$(extract_supported_mechs "$sasl_ssl_dir")"
             if [[ -z "$supported_mechs" ]]; then
@@ -619,6 +710,9 @@ for host in "${TARGETS[@]}"; do
                 add_note "$target" "SASL_SSL diagnostic probes disabled server-certificate verification because the tester did not have the listener trust anchor. This is a testing accommodation only and does not demonstrate production client behaviour."
             fi
         else
+            echo "SASL probes disabled (SASL_PROBE=0)" > "$probe_dir/SASL-probe-status.txt"
+            echo "SASL probes disabled" > "$sasl_pt_dir/NOT_RUN.txt"
+            echo "SASL probes disabled" > "$sasl_ssl_dir/NOT_RUN.txt"
             add_note "$target" "SASL mechanism probes were not run (SASL_PROBE=0)."
         fi
 
@@ -699,5 +793,6 @@ echo "[+] Evidence:              $OUT_ROOT"
 echo "[+] Candidate findings:    $FINDINGS_MD"
 echo "[+] Candidate findings CSV:$FINDINGS_CSV"
 echo "[+] Review notes:          $NOTES_MD"
+echo "[+] Positive controls:     $POSITIVE_MD"
 echo "[+] Protocol summaries:    <target>/port-<port>/kcat/protocol-summary.csv"
 echo "[+] Candidate finding count: $FINDING_COUNT"
