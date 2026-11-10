@@ -885,7 +885,20 @@ function Write-FinalSummary {
 
         $items = @($rows | Where-Object { $_.Area -eq $area })
         if ($items.Count -eq 0) {
-            Write-Host '  No item results. Check scan status and notes; this does not prove the machine is fully updated.'
+            $scanSucceeded = $false
+            switch ($area) {
+                'Application'       { $scanSucceeded = [bool]$script:ScanOK.Apps }
+                'Windows Update'    { $scanSucceeded = [bool]$script:ScanOK.Windows }
+                'Driver / firmware' { $scanSucceeded = [bool]$script:ScanOK.Drivers }
+            }
+
+            if ($scanSucceeded) {
+                Write-Host '  Nothing offered.'
+            }
+            else {
+                Write-Host ('  No item results. The scan did not complete or was skipped; ' +
+                    'check notes/errors before assuming this area is up to date.')
+            }
             continue
         }
 
