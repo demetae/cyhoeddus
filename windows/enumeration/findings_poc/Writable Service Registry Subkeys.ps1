@@ -61,19 +61,31 @@ Test-Key -KeyPath $Sub.PSPath -ServiceName $Svc.PSChildName -RunAs $RunAs -Scope
 }
 
 # Output.
+$CsvPath = Join-Path $PWD "$($env:COMPUTERNAME)_ServiceRegistryPermissions.csv"
+
 "Host: $env:COMPUTERNAME | User: $env:USERNAME | Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
 ''
+
 if (-not $Results) {
-'RESULT: No service registry keys are modifiable by the current user.'
+    'RESULT: No matching writable service registry ACL entries found.'
 }
 else {
-($Results | Sort-Object Signal, Scope, Service |
-Format-Table Service, Scope, Key, Identity, Rights, Signal, Inherited, RunAs -AutoSize |
-Out-String -Width 320).TrimEnd()
-''
-$Modify = @($Results | Where-Object { $_.Signal -eq 'Modify' })
-"RESULT: $($Results.Count) entries; $($Modify.Count) of 'Modify' class."
-if ($Modify.Count -gt 0) {
-'Modify-class entries allow existing values/permissions to be changed - investigate these first.'
-}
+    $Results |
+        Sort-Object Signal, Scope, Service |
+        Select-Object `
+            @{Name='Host';Expression={$env:COMPUTERNAME}},
+            @{Name='User';Expression={$env:USERNAME}},
+            @{Name='Date';Expression={Get-Date -Format 'yyyy-MM-dd HH:mm'}},
+            Service, Scope, Key, Identity, Rights, Signal, Inherited, RunAs |
+        Export-Csv -Path $CsvPath -NoTypeInformation -Encoding UTF8
+
+    $Modify = @($Results | Where-Object { $_.Signal -eq 'Modify' })
+
+    "RESULT: $(@($Results).Count) entries; $($Modify.Count) of 'Modify' class."
+
+    if ($Modify.Count -gt 0) {
+        'Modify-class entries allow existing values/permissions to be changed - investigate these first.'
+    }
+
+    "CSV saved to: $CsvPath"
 }
