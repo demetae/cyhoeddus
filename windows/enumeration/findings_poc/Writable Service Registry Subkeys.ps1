@@ -16,22 +16,24 @@ $Rights = [ordered]@{
 }
 
 # Rights that change existing state.
-$ModifyMask = 0x00000002 -bor
-              0x00010000 -bor
-              0x00040000 -bor
-              0x00080000 -bor
-              0x10000000 -bor
-              0x40000000
+$ModifyMask = (
+    0x00000002 -bor
+    0x00010000 -bor
+    0x00040000 -bor
+    0x00080000 -bor
+    0x10000000 -bor
+    0x40000000
+)
 
 # Obtain current user SID and group memberships.
 $Me = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 
 $MySids = New-Object 'System.Collections.Generic.HashSet[string]'
 
-[void] $MySids.Add($Me.User.Value)
+[void]$MySids.Add($Me.User.Value)
 
 foreach ($g in $Me.Groups) {
-    [void] $MySids.Add($g.Value)
+    [void]$MySids.Add($g.Value)
 }
 
 # Check whether the current session is elevated.
@@ -59,29 +61,33 @@ function Add-ScanError {
         $ErrorRecord
     )
 
-    $script:ScanErrors.Add(
-        [PSCustomObject][ordered]@{
-            Host          = $env:COMPUTERNAME
-            User          = $Me.Name
-            Date          = $ScanDate
-            Service       = $ServiceName
-            Key           = $KeyPath -replace '.*::', ''
-            Operation     = $Operation
-            Error         = $ErrorRecord.Exception.Message
-            ExceptionType = $ErrorRecord.Exception.GetType().FullName
-            ErrorId       = $ErrorRecord.FullyQualifiedErrorId
-        }
-    )
+    $CleanPath = ($KeyPath -replace '.*::', '')
+    $ErrorMessage = $ErrorRecord.Exception.Message
+    $ExceptionType = $ErrorRecord.Exception.GetType().FullName
+
+    $Entry = [PSCustomObject][ordered]@{
+        Host          = $env:COMPUTERNAME
+        User          = $Me.Name
+        Date          = $ScanDate
+        Service       = $ServiceName
+        Key           = $CleanPath
+        Operation     = $Operation
+        Error         = $ErrorMessage
+        ExceptionType = $ExceptionType
+        ErrorId       = $ErrorRecord.FullyQualifiedErrorId
+    }
+
+    [void]$script:ScanErrors.Add($Entry)
 
     Write-Warning "$Operation failed: $KeyPath"
-    Write-Warning $ErrorRecord.Exception.Message
+    Write-Warning $ErrorMessage
 }
 
 # Safely retrieve optional registry properties.
 function Get-OptionalProperty {
     param(
         $Object,
-        [string] $Name
+        [string]$Name
     )
 
     if ($null -ne $Object) {
@@ -110,6 +116,7 @@ function Test-Key {
 
     try {
         $Acl = Get-Acl -LiteralPath $KeyPath -ErrorAction Stop
+
         $script:ReadableKeys++
     }
     catch {
@@ -136,6 +143,7 @@ function Test-Key {
             continue
         }
 
+        # Resolve identity to SID.
         try {
             $Sid = $Ace.IdentityReference.Translate(
                 [System.Security.Principal.SecurityIdentifier]
@@ -145,11 +153,12 @@ function Test-Key {
             $Sid = $Ace.IdentityReference.Value
         }
 
+        # Only inspect identities held by the current user.
         if (-not $MySids.Contains($Sid)) {
             continue
         }
 
-        $Mask = [int] $Ace.RegistryRights
+        $Mask = [int]$Ace.RegistryRights
 
         $Matched = @(
             $Rights.Keys | Where-Object {
@@ -161,21 +170,28 @@ function Test-Key {
             continue
         }
 
+        # Classify the permissions.
+        if ($Mask -band $ModifyMask) {
+            $Signal = 'Modify'
+        }
+        else {
+            $Signal = 'Subkey-only'
+        }
+
+        $CleanPath = ($KeyPath -replace '.*::', '')
+        $MatchedRights = ($Matched -join ', ')
+
+        # Emit finding.
         [PSCustomObject][ordered]@{
             Host        = $env:COMPUTERNAME
             User        = $Me.Name
             Date        = $ScanDate
             Service     = $ServiceName
             Scope       = $Scope
-            Key         = $KeyPath -replace '.*::', ''
+            Key         = $CleanPath
             Identity    = $Ace.IdentityReference.Value
-            Rights      = $Matched -join ', '
-            Signal      = if ($Mask -band $ModifyMask) {
-                'Modify'
-            }
-            else {
-                'Subkey-only'
-            }
+            Rights      = $MatchedRights
+            Signal      = $Signal
             Inherited   = $Ace.IsInherited
             RunAs       = $RunAs
             ImagePath   = $ImagePath
@@ -200,7 +216,9 @@ catch {
     $Services = @()
 }
 
+# Inspect each service.
 $Results = @(
+
     foreach ($Svc in $Services) {
 
         $Props = $null
@@ -218,7 +236,7 @@ $Results = @(
                 -ErrorRecord $_
         }
 
-        # Safely retrieve optional registry properties.
+        # Safely retrieve optional properties.
         $ImagePath = Get-OptionalProperty $Props 'ImagePath'
         $ServiceType = Get-OptionalProperty $Props 'Type'
         $RunAs = Get-OptionalProperty $Props 'ObjectName'
@@ -292,46 +310,64 @@ $Results = @(
 
 # Export findings.
 if ($Results.Count -gt 0) {
+
     $Results | Export-Csv `
         -LiteralPath $CsvPath `
         -NoTypeInformation `
-        -Encoding UTF8
+        -Encoding UTF8 `
+        -ErrorAction Stop
 }
 else {
-    '"Host","User","Date","Service","Scope","Key","Identity","Rights","Signal","Inherited","RunAs","ImagePath","ServiceType"' |
-        Set-Content -LiteralPath $CsvPath -Encoding UTF8
+
+    $Header = '"Host","User","Date","Service","Scope","Key","Identity","Rights","Signal","Inherited","RunAs","ImagePath","ServiceType"'
+
+    $Header | Set-Content `
+        -LiteralPath $CsvPath `
+        -Encoding UTF8 `
+        -ErrorAction Stop
 }
 
 # Export enumeration errors.
 if ($script:ScanErrors.Count -gt 0) {
+
     $script:ScanErrors | Export-Csv `
         -LiteralPath $ErrorCsvPath `
         -NoTypeInformation `
-        -Encoding UTF8
+        -Encoding UTF8 `
+        -ErrorAction Stop
 }
 else {
-    '"Host","User","Date","Service","Key","Operation","Error","ExceptionType","ErrorId"' |
-        Set-Content -LiteralPath $ErrorCsvPath -Encoding UTF8
+
+    $ErrorHeader = '"Host","User","Date","Service","Key","Operation","Error","ExceptionType","ErrorId"'
+
+    $ErrorHeader | Set-Content `
+        -LiteralPath $ErrorCsvPath `
+        -Encoding UTF8 `
+        -ErrorAction Stop
 }
 
 # Calculate findings.
 $Modify = @(
-    $Results | Where-Object { $_.Signal -eq 'Modify' }
+    $Results | Where-Object {
+        $_.Signal -eq 'Modify'
+    }
 )
 
 $SubkeyOnly = @(
-    $Results | Where-Object { $_.Signal -eq 'Subkey-only' }
+    $Results | Where-Object {
+        $_.Signal -eq 'Subkey-only'
+    }
 )
 
 # Calculate ACL read success rate.
-$Coverage = if ($script:TotalKeys -gt 0) {
-    [math]::Round(
+$Coverage = 0
+
+if ($script:TotalKeys -gt 0) {
+
+    $Coverage = [math]::Round(
         ($script:ReadableKeys / $script:TotalKeys) * 100,
         2
     )
-}
-else {
-    0
 }
 
 # Console summary.
@@ -355,26 +391,40 @@ Write-Host "Modify:           $($Modify.Count)"
 Write-Host "Subkey-only:      $($SubkeyOnly.Count)"
 Write-Host ''
 
+# Determine assessment outcome.
 if ($Results.Count -gt 0) {
-    Write-Host 'RESULT: Potentially writable service registry keys identified.' `
+
+    Write-Host `
+        'RESULT: Potentially writable service registry keys identified.' `
         -ForegroundColor Yellow
 }
-elseif ($script:ScanErrors.Count -gt 0 -or $script:TotalKeys -eq 0) {
-    Write-Host 'RESULT: INCONCLUSIVE - enumeration incomplete.' `
+elseif (
+    $script:ScanErrors.Count -gt 0 -or
+    $script:TotalKeys -eq 0
+) {
+
+    Write-Host `
+        'RESULT: INCONCLUSIVE - enumeration incomplete.' `
         -ForegroundColor Yellow
 }
 else {
-    Write-Host 'RESULT: No matching writable service registry ACL entries found.' `
+
+    Write-Host `
+        'RESULT: No matching writable service registry ACL entries found.' `
         -ForegroundColor Green
 }
 
 if ($script:ScanErrors.Count -gt 0) {
-    Write-Host 'WARNING: Assessment coverage is incomplete.' `
+
+    Write-Host `
+        'WARNING: Assessment coverage is incomplete.' `
         -ForegroundColor Yellow
 }
 
 if ($Modify.Count -gt 0) {
-    Write-Host 'Prioritise investigation of Modify-class entries.' `
+
+    Write-Host `
+        'Prioritise investigation of Modify-class entries.' `
         -ForegroundColor Yellow
 }
 
