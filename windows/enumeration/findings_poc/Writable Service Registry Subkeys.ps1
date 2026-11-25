@@ -1,14 +1,13 @@
-$Root = 'HKLM:\SYSTEM\CurrentControlSet\Services'
+$RootPath = 'SYSTEM\CurrentControlSet\Services'
+$OutputDir = (Get-Location).Path
 
-# Enable detailed debugging.
-$DebugMode = $true
-
-# Output files.
-$CsvPath = Join-Path $PWD "$($env:COMPUTERNAME)_ServiceRegistryPermissions.csv"
-$ErrorCsvPath = Join-Path $PWD "$($env:COMPUTERNAME)_ServiceRegistryErrors.csv"
+$CsvPath = Join-Path $OutputDir "$($env:COMPUTERNAME)_ServiceRegistryPermissions.csv"
+$ErrorCsvPath = Join-Path $OutputDir "$($env:COMPUTERNAME)_ServiceRegistryErrors.csv"
 $ScanDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
 
-# Write-class registry rights.
+$DebugMode = $false
+
+# Write-class registry permissions.
 $Rights = [ordered]@{
     'SetValue'     = 0x00000002
     'CreateSubKey' = 0x00000004
@@ -28,9 +27,8 @@ $ModifyMask = (
     0x40000000
 )
 
-# Obtain current user identity.
+# Obtain current user identity and group SIDs.
 $Me = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-
 $MySids = New-Object 'System.Collections.Generic.HashSet[string]'
 
 [void]$MySids.Add($Me.User.Value)
@@ -39,7 +37,7 @@ foreach ($Group in $Me.Groups) {
     [void]$MySids.Add($Group.Value)
 }
 
-# Check elevation.
+# Warn if running elevated.
 $Principal = New-Object System.Security.Principal.WindowsPrincipal($Me)
 
 if ($Principal.IsInRole(
@@ -56,24 +54,7 @@ $script:TotalKeys = 0
 $script:ReadableKeys = 0
 $script:UnreadableKeys = 0
 $script:SkippedDrivers = 0
-
-# Safely retrieve optional properties.
-function Get-OptionalProperty {
-    param(
-        $Object,
-        [string]$Name
-    )
-
-    if ($null -ne $Object) {
-        $Property = $Object.PSObject.Properties[$Name]
-
-        if ($null -ne $Property) {
-            return $Property.Value
-        }
-    }
-
-    return $null
-}
+$ServiceNames = @()
 
 # Record errors.
 function Add-ScanError {
@@ -97,40 +78,39 @@ function Add-ScanError {
 
     [void]$script:ScanErrors.Add($Entry)
 
-    Write-Warning "$Operation failed: [$KeyPath]"
+    Write-Warning "$Operation failed: $KeyPath"
     Write-Warning $ErrorRecord.Exception.Message
 }
 
-# Inspect a registry key.
+# Inspect ACL using native .NET registry API.
 function Test-ServiceRegistryKey {
     param(
-        [string]$KeyPath,
+        [Microsoft.Win32.RegistryKey]$Key,
         [string]$ServiceName,
-        [string]$RunAs,
         [string]$Scope,
+        [string]$RunAs,
         [string]$ImagePath,
         [string]$ServiceType
     )
 
     $script:TotalKeys++
-
-    if ($DebugMode) {
-        Write-Host "DEBUG: [$KeyPath]" -ForegroundColor Cyan
-        Write-Host "Type: $($KeyPath.GetType().FullName)"
-    }
+    $KeyPath = $Key.Name
 
     try {
-        if ($DebugMode) {
-            $Exists = Test-Path -LiteralPath $KeyPath
-            Write-Host "Exists: $Exists"
-        }
+        $Acl = $Key.GetAccessControl(
+            [System.Security.AccessControl.AccessControlSections]::Access
+        )
 
-        $Acl = Get-Acl -LiteralPath $KeyPath -ErrorAction Stop
+        $Aces = $Acl.GetAccessRules(
+            $true,
+            $true,
+            [System.Security.Principal.SecurityIdentifier]
+        )
 
         $script:ReadableKeys++
 
         if ($DebugMode) {
-            Write-Host 'ACL read successful.' -ForegroundColor Green
+            Write-Host "OK: $KeyPath" -ForegroundColor Green
         }
     }
     catch {
@@ -139,34 +119,26 @@ function Test-ServiceRegistryKey {
         Add-ScanError `
             -KeyPath $KeyPath `
             -ServiceName $ServiceName `
-            -Operation 'Get-Acl' `
+            -Operation 'Read ACL' `
             -ErrorRecord $_
 
         return
     }
 
-    foreach ($Ace in $Acl.Access) {
+    foreach ($Ace in $Aces) {
 
         # Only inspect Allow ACEs.
         if ($Ace.AccessControlType -ne 'Allow') {
             continue
         }
 
-        # Ignore ACEs that apply only to child objects.
+        # Ignore inheritance-only ACEs.
         if ($Ace.PropagationFlags -band
             [System.Security.AccessControl.PropagationFlags]::InheritOnly) {
             continue
         }
 
-        # Resolve identity to SID.
-        try {
-            $Sid = $Ace.IdentityReference.Translate(
-                [System.Security.Principal.SecurityIdentifier]
-            ).Value
-        }
-        catch {
-            $Sid = $Ace.IdentityReference.Value
-        }
+        $Sid = $Ace.IdentityReference.Value
 
         # Check whether the current user holds this SID.
         if (-not $MySids.Contains($Sid)) {
@@ -185,6 +157,16 @@ function Test-ServiceRegistryKey {
             continue
         }
 
+        # Resolve SID to a readable account name.
+        try {
+            $Identity = $Ace.IdentityReference.Translate(
+                [System.Security.Principal.NTAccount]
+            ).Value
+        }
+        catch {
+            $Identity = $Sid
+        }
+
         # Classify permissions.
         if ($Mask -band $ModifyMask) {
             $Signal = 'Modify'
@@ -194,7 +176,6 @@ function Test-ServiceRegistryKey {
         }
 
         $MatchedRights = ($Matched -join ', ')
-        $CleanPath = ($KeyPath -replace '.*::', '')
 
         $Finding = [PSCustomObject][ordered]@{
             Host        = $env:COMPUTERNAME
@@ -202,8 +183,9 @@ function Test-ServiceRegistryKey {
             Date        = $ScanDate
             Service     = $ServiceName
             Scope       = $Scope
-            Key         = $CleanPath
-            Identity    = $Ace.IdentityReference.Value
+            Key         = $KeyPath
+            Identity    = $Identity
+            SID         = $Sid
             Rights      = $MatchedRights
             Signal      = $Signal
             Inherited   = $Ace.IsInherited
@@ -219,119 +201,153 @@ function Test-ServiceRegistryKey {
     }
 }
 
-# Enumerate service registry keys.
-$Services = @()
+# Open Services registry root in read-only mode.
+$Root = $null
 
 try {
-    $Services = @(
-        Get-ChildItem -LiteralPath $Root -ErrorAction Stop
+    $Root = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+        $RootPath,
+        $false
     )
+
+    if ($null -eq $Root) {
+        throw 'Unable to open Services registry root.'
+    }
+
+    $ServiceNames = @($Root.GetSubKeyNames())
+
+    Write-Host "Discovered $($ServiceNames.Count) service keys."
+
+    foreach ($ServiceName in $ServiceNames) {
+
+        $Svc = $null
+        $ServicePath = "$RootPath\$ServiceName"
+
+        try {
+            # Open service key read-only.
+            $Svc = $Root.OpenSubKey($ServiceName, $false)
+
+            if ($null -eq $Svc) {
+                throw 'Unable to open service registry key.'
+            }
+
+            # Read optional registry values.
+            $ImagePath = $Svc.GetValue('ImagePath', $null)
+            $ServiceType = $Svc.GetValue('Type', $null)
+            $RunAs = $Svc.GetValue('ObjectName', $null)
+
+            # Skip known driver service types.
+            if ($null -ne $ServiceType) {
+                if ([int]$ServiceType -band 0x0F) {
+                    $script:SkippedDrivers++
+                    continue
+                }
+            }
+
+            if (-not $ImagePath) {
+                $ImagePath = 'Not configured'
+            }
+
+            if (-not $RunAs) {
+                $RunAs = 'Unknown'
+            }
+
+            if ($null -eq $ServiceType) {
+                $ServiceType = 'Unknown'
+            }
+
+            # Inspect service root ACL.
+            Test-ServiceRegistryKey `
+                -Key $Svc `
+                -ServiceName $ServiceName `
+                -Scope 'Root' `
+                -RunAs $RunAs `
+                -ImagePath $ImagePath `
+                -ServiceType $ServiceType
+
+            # Enumerate immediate service subkeys.
+            $SubNames = @()
+
+            try {
+                $SubNames = @($Svc.GetSubKeyNames())
+            }
+            catch {
+                Add-ScanError `
+                    -KeyPath $ServicePath `
+                    -ServiceName $ServiceName `
+                    -Operation 'Enumerate subkeys' `
+                    -ErrorRecord $_
+            }
+
+            foreach ($SubName in $SubNames) {
+
+                $Sub = $null
+                $SubPath = "$ServicePath\$SubName"
+
+                try {
+                    $Sub = $Svc.OpenSubKey($SubName, $false)
+
+                    if ($null -eq $Sub) {
+                        throw 'Unable to open registry subkey.'
+                    }
+
+                    Test-ServiceRegistryKey `
+                        -Key $Sub `
+                        -ServiceName $ServiceName `
+                        -Scope 'Subkey' `
+                        -RunAs $RunAs `
+                        -ImagePath $ImagePath `
+                        -ServiceType $ServiceType
+                }
+                catch {
+                    Add-ScanError `
+                        -KeyPath $SubPath `
+                        -ServiceName $ServiceName `
+                        -Operation 'Inspect subkey' `
+                        -ErrorRecord $_
+                }
+                finally {
+                    if ($null -ne $Sub) {
+                        $Sub.Close()
+                    }
+                }
+            }
+        }
+        catch {
+            Add-ScanError `
+                -KeyPath $ServicePath `
+                -ServiceName $ServiceName `
+                -Operation 'Inspect service' `
+                -ErrorRecord $_
+        }
+        finally {
+            if ($null -ne $Svc) {
+                $Svc.Close()
+            }
+        }
+    }
 }
 catch {
     Add-ScanError `
-        -KeyPath $Root `
+        -KeyPath $RootPath `
         -ServiceName 'N/A' `
         -Operation 'Enumerate services' `
         -ErrorRecord $_
 }
-
-Write-Host "Discovered $($Services.Count) service registry keys."
-
-# Inspect each service.
-foreach ($Svc in $Services) {
-
-    $ServiceName = [string]$Svc.PSChildName
-    $ServicePath = [string]$Svc.PSPath
-
-    $Props = $null
-
-    try {
-        $Props = Get-ItemProperty `
-            -LiteralPath $ServicePath `
-            -ErrorAction Stop
-    }
-    catch {
-        Add-ScanError `
-            -KeyPath $ServicePath `
-            -ServiceName $ServiceName `
-            -Operation 'Get-ItemProperty' `
-            -ErrorRecord $_
-    }
-
-    # Read optional service properties.
-    $ImagePath = Get-OptionalProperty $Props 'ImagePath'
-    $ServiceType = Get-OptionalProperty $Props 'Type'
-    $RunAs = Get-OptionalProperty $Props 'ObjectName'
-
-    # Skip known driver types.
-    if ($null -ne $ServiceType) {
-        if ([int]$ServiceType -band 0x0F) {
-            $script:SkippedDrivers++
-            continue
-        }
-    }
-
-    if (-not $ImagePath) {
-        $ImagePath = 'Not configured or unreadable'
-    }
-
-    if (-not $RunAs) {
-        $RunAs = 'Unknown'
-    }
-
-    if ($null -eq $ServiceType) {
-        $ServiceType = 'Unknown'
-    }
-
-    # Inspect the service root key.
-    Test-ServiceRegistryKey `
-        -KeyPath $ServicePath `
-        -ServiceName $ServiceName `
-        -RunAs $RunAs `
-        -Scope 'Root' `
-        -ImagePath $ImagePath `
-        -ServiceType $ServiceType
-
-    # Enumerate immediate subkeys.
-    $Subkeys = @()
-
-    try {
-        $Subkeys = @(
-            Get-ChildItem `
-                -LiteralPath $ServicePath `
-                -ErrorAction Stop
-        )
-    }
-    catch {
-        Add-ScanError `
-            -KeyPath $ServicePath `
-            -ServiceName $ServiceName `
-            -Operation 'Enumerate subkeys' `
-            -ErrorRecord $_
-    }
-
-    foreach ($Sub in $Subkeys) {
-
-        $SubPath = [string]$Sub.PSPath
-
-        Test-ServiceRegistryKey `
-            -KeyPath $SubPath `
-            -ServiceName $ServiceName `
-            -RunAs $RunAs `
-            -Scope 'Subkey' `
-            -ImagePath $ImagePath `
-            -ServiceType $ServiceType
+finally {
+    if ($null -ne $Root) {
+        $Root.Close()
     }
 }
 
 # Sort findings.
 $SortedResults = @(
-    $script:Results |
-        Sort-Object Signal, Scope, Service
+    $script:Results | Sort-Object Signal, Scope, Service
 )
 
-# Export findings CSV.
+# Export findings.
 if ($SortedResults.Count -gt 0) {
+
     $SortedResults | Export-Csv `
         -LiteralPath $CsvPath `
         -NoTypeInformation `
@@ -339,7 +355,7 @@ if ($SortedResults.Count -gt 0) {
         -ErrorAction Stop
 }
 else {
-    $Header = '"Host","User","Date","Service","Scope","Key","Identity","Rights","Signal","Inherited","RunAs","ImagePath","ServiceType"'
+    $Header = '"Host","User","Date","Service","Scope","Key","Identity","SID","Rights","Signal","Inherited","RunAs","ImagePath","ServiceType"'
 
     $Header | Set-Content `
         -LiteralPath $CsvPath `
@@ -347,8 +363,9 @@ else {
         -ErrorAction Stop
 }
 
-# Export errors CSV.
+# Export errors.
 if ($script:ScanErrors.Count -gt 0) {
+
     $script:ScanErrors | Export-Csv `
         -LiteralPath $ErrorCsvPath `
         -NoTypeInformation `
@@ -364,7 +381,7 @@ else {
         -ErrorAction Stop
 }
 
-# Calculate totals.
+# Calculate findings.
 $Modify = @(
     $SortedResults | Where-Object {
         $_.Signal -eq 'Modify'
@@ -386,7 +403,7 @@ if ($script:TotalKeys -gt 0) {
     )
 }
 
-# Console summary.
+# Display summary.
 Write-Host ''
 Write-Host '========== SERVICE REGISTRY ACL AUDIT =========='
 Write-Host ''
@@ -394,7 +411,7 @@ Write-Host "Host:             $env:COMPUTERNAME"
 Write-Host "User:             $($Me.Name)"
 Write-Host "Date:             $ScanDate"
 Write-Host ''
-Write-Host "Services found:   $($Services.Count)"
+Write-Host "Services found:   $($ServiceNames.Count)"
 Write-Host "Drivers skipped:  $script:SkippedDrivers"
 Write-Host "ACLs attempted:   $script:TotalKeys"
 Write-Host "ACLs readable:    $script:ReadableKeys"
@@ -407,7 +424,6 @@ Write-Host "Modify:           $($Modify.Count)"
 Write-Host "Subkey-only:      $($SubkeyOnly.Count)"
 Write-Host ''
 
-# Determine assessment outcome.
 if ($SortedResults.Count -gt 0) {
 
     Write-Host 'RESULT: Potentially writable service registry keys identified.' `
